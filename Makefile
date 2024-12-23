@@ -1,6 +1,9 @@
 # Compiler and flags
 CXX = g++
-CXXFLAGS = -Wall -Wextra -pthread -std=c++17
+# CXXFLAGS = -Wall -Wextra -pthread -std=c++17
+CXXFLAGS = -Wall -Wextra -pthread -std=c++17 \
+-I/opt/homebrew/opt/openssl@3/include -L/opt/homebrew/opt/openssl@3/lib -lssl -lcrypto
+
 
 # Directories
 CLIENT_DIR = client

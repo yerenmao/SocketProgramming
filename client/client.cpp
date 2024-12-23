@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include "../shared/message.hpp"
+#include "../shared/ssl.hpp"
 
 bool Client::running = true;
 
@@ -17,8 +18,20 @@ Client::~Client() {
 
 /* 連線到 Server */
 bool Client::connect_to_server() {
+    // 初始化 OpenSSL
+    init_openssl();
+
+    // 建立 SSL_CTX，載入 CA (用來驗證 server)
+    client_ctx = create_client_context("./client/keys/ca.crt");
+    if (!client_ctx) {
+        std::cerr << "Failed to create SSL context\n";
+        return false;
+    }
+
+
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
+        SSL_CTX_free(client_ctx);
         perror("socket");
         return false;
     }
@@ -31,13 +44,26 @@ bool Client::connect_to_server() {
     if (inet_pton(AF_INET, server_ip.c_str(), &server_addr.sin_addr) <= 0) {
         perror("inet_pton");
         close(server_fd);
+        SSL_CTX_free(client_ctx);
         return false;
     }
 
     if (connect(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         perror("connect");
         close(server_fd);
+        SSL_CTX_free(client_ctx);
         return false;
+    }
+
+    // 4) 建立 SSL 並綁定 socket
+    server_ssl = SSL_new(client_ctx);
+    SSL_set_fd(server_ssl, server_fd);
+
+    // 5) Client 端握手
+    if (SSL_connect(server_ssl) <= 0) {
+        ERR_print_errors_fp(stderr);
+    } else {
+        std::cout << "SSL handshake success (Client)!\n";
     }
 
     std::cout << "Connected to server at " << server_ip << ":" << server_port << "\n";
@@ -48,8 +74,10 @@ bool Client::connect_to_server() {
     join_msg.msg_type = JOIN;
     snprintf(join_msg.payload, MAX_PAYLOAD_SIZE, "%d", my_listen_port);
     join_msg.payload_size = (int)strlen(join_msg.payload);
-    if (write(server_fd, &join_msg, sizeof(join_msg)) < 0) {
+    if (SSL_write(server_ssl, &join_msg, sizeof(join_msg)) < 0) {
         perror("write(JOIN)");
+        SSL_shutdown(server_ssl);
+        SSL_free(server_ssl);
         close(server_fd);
         return false;
     }
@@ -63,7 +91,14 @@ server_listener_thread_func 是用來 handle Relay Mode 的 Thread
 direct_listener_thread_func 是用來 handle Direct Mode 的 Thread
 */
 bool Client::start_threads() {
-    direct_listen_fd = create_listening_socket(my_listen_port);
+    // 建立 SSL_CTX，載入憑證與私鑰
+    server_ctx = create_server_context("./client/keys/server.crt", "./client/keys/server.key");
+    if (!server_ctx) {
+        std::cerr << "Failed to create (server)SSL context\n";
+        return 1;
+    }
+
+    direct_listen_fd = create_listening_socket(server_ctx, my_listen_port);
     if (direct_listen_fd < 0) {
         std::cerr << "Failed to create listening socket.\n";
         return false;
@@ -147,6 +182,7 @@ void Client::command_loop() {
                 std::cout << "Usage: chat <to_id> <message>\n";
                 continue;
             }
+
             int to_id = std::stoi(line.substr(first_space + 1, second_space - first_space - 1));
             std::string message = line.substr(second_space + 1);
             chat(to_id, message);
@@ -157,6 +193,7 @@ void Client::command_loop() {
                 std::cout << "Usage: request_peer <to_id>\n";
                 continue;
             }
+
             int to_id = std::stoi(line.substr(first_space + 1));
             request_peer(to_id);
         } else if (cmd == "direct_send") {
@@ -170,6 +207,9 @@ void Client::command_loop() {
                 std::cout << "Usage: direct_send <ip> <port> <message>\n";
                 continue;
             }
+
+
+            
             std::string peer_ip = line.substr(first_space + 1, second_space - first_space - 1);
             int peer_port = std::stoi(line.substr(second_space + 1, third_space - second_space - 1));
             std::string message = line.substr(third_space + 1);
@@ -200,7 +240,7 @@ void Client::login(const std::string& username, const std::string& password) {
     snprintf(login_msg.payload, MAX_PAYLOAD_SIZE, "%s %s", username.c_str(), password.c_str());
     login_msg.payload_size = strlen(login_msg.payload);
 
-    if (write(server_fd, &login_msg, sizeof(login_msg)) < 0) {
+    if (SSL_write(server_ssl, &login_msg, sizeof(login_msg)) < 0) {
         perror("write(login)");
         return;
     }
@@ -222,7 +262,7 @@ void Client::logout() {
     logout_msg.msg_type = LOGOUT;
     logout_msg.payload_size = snprintf(logout_msg.payload, MAX_PAYLOAD_SIZE, "%s", username.c_str());
 
-    if (write(server_fd, &logout_msg, sizeof(logout_msg)) < 0) {
+    if (SSL_write(server_ssl, &logout_msg, sizeof(logout_msg)) < 0) {
         perror("write(logout)");
         return;
     }
@@ -239,7 +279,7 @@ void Client::register_user(const std::string& username, const std::string& passw
     snprintf(register_msg.payload, MAX_PAYLOAD_SIZE, "%s %s", username.c_str(), password.c_str());
     register_msg.payload_size = strlen(register_msg.payload);
 
-    if (write(server_fd, &register_msg, sizeof(register_msg)) < 0) {
+    if (SSL_write(server_ssl, &register_msg, sizeof(register_msg)) < 0) {
         perror("write(register)");
         return;
     }
@@ -252,7 +292,7 @@ void Client::chat(int to_id, const std::string& message) {
     std::strncpy(chat_msg.payload, message.c_str(), MAX_PAYLOAD_SIZE);
     chat_msg.payload_size = message.size();
 
-    if (write(server_fd, &chat_msg, sizeof(chat_msg)) < 0) {
+    if (SSL_write(server_ssl, &chat_msg, sizeof(chat_msg)) < 0) {
         perror("write(chat)");
     }
 }
@@ -262,12 +302,13 @@ void Client::request_peer(int to_id) {
     req_msg.msg_type = REQUEST_PEER;
     req_msg.to_id = to_id;
 
-    if (write(server_fd, &req_msg, sizeof(req_msg)) < 0) {
+    if (SSL_write(server_ssl, &req_msg, sizeof(req_msg)) < 0) {
         perror("write(request_peer)");
     }
 }
 
 void Client::direct_send(const std::string& peer_ip, int peer_port, const std::string& message) {
+    // Create socket and connect
     int peer_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (peer_fd < 0) {
         perror("socket(direct_send)");
@@ -290,14 +331,55 @@ void Client::direct_send(const std::string& peer_ip, int peer_port, const std::s
         return;
     }
 
-    Message direct_msg{};
-    direct_msg.msg_type = DIRECT_MSG;
-    std::strncpy(direct_msg.payload, message.c_str(), MAX_PAYLOAD_SIZE);
-    direct_msg.payload_size = message.size();
+    // 建立 SSL 並綁定 socket
+    SSL* peer_ssl = SSL_new(client_ctx);
+    if (!peer_ssl) {
+        std::cerr << "Failed to create SSL object." << std::endl;
+    }
 
-    if (write(peer_fd, &direct_msg, sizeof(direct_msg)) < 0) {
+    if (SSL_set_fd(peer_ssl, peer_fd) != 1) {
+        std::cerr << "Failed to bind SSL to socket." << std::endl;
+    }
+
+    // Client 端握手
+    if (SSL_connect(peer_ssl) <= 0) {
+        ERR_print_errors_fp(stderr);
+    } else {
+        std::cout << "SSL handshake success (P2P Client)!\n";
+    }
+
+    // Send a message in the same Message format
+    Message direct_msg;
+    memset(&direct_msg, 0, sizeof(direct_msg));
+    direct_msg.msg_type = DIRECT_MSG;
+    strncpy(direct_msg.payload, message.c_str(), MAX_PAYLOAD_SIZE);
+    direct_msg.payload_size = (int)strlen(direct_msg.payload);
+
+    if (SSL_write(peer_ssl, &direct_msg, sizeof(direct_msg)) < 0) {
         perror("write(direct_msg)");
     }
+
+    int shutdown_result = SSL_shutdown(peer_ssl);
+    if (shutdown_result == 0) {
+        // 對端尚未回應 close_notify，進行第二次關閉
+        shutdown_result = SSL_shutdown(peer_ssl);
+    }
+    if (shutdown_result < 0) {
+        int err_code = SSL_get_error(peer_ssl, shutdown_result);
+        std::cerr << "SSL_shutdown failed, error code: " << err_code << std::endl;
+        ERR_print_errors_fp(stderr); // 打印詳細錯誤資訊
+    } else if (shutdown_result == 0) {
+        std::cout << "SSL_shutdown incomplete, waiting for peer's close_notify." << std::endl;
+    }
+
+    SSL_free(peer_ssl);
+
+    // 檢查釋放過程中是否有錯誤
+    if (ERR_peek_error()) {
+        std::cerr << "Errors occurred during SSL_free:" << std::endl;
+        ERR_print_errors_fp(stderr);
+    }
+
     close(peer_fd);
 }
 

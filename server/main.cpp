@@ -16,7 +16,6 @@ int main(int argc, char* argv[]) {
     Authentication::load_user_data();
     try {
         Server server(server_port, max_clients, worker_count);
-        server.create_socket();
         server.start();
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;

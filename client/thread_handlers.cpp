@@ -6,9 +6,10 @@
 
 #include "client.hpp"
 #include "../shared/message.hpp"
+#include "../shared/ssl.hpp"
 
 /* 此 function 會開一個 socket 並聽在給定的 port (client 會傳 my_listen_port) */
-int create_listening_socket(int port) {
+int create_listening_socket(SSL_CTX* ctx, int port) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
         perror("socket(listen)");
@@ -26,12 +27,14 @@ int create_listening_socket(int port) {
 
     if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         perror("bind(listen)");
+        SSL_CTX_free(ctx);
         close(fd);
         return -1;
     }
 
     if (listen(fd, 5) < 0) {
         perror("listen");
+        SSL_CTX_free(ctx);
         close(fd);
         return -1;
     }
@@ -45,7 +48,7 @@ void* server_listener_thread_func(void* arg) {
 
     while (client->is_running()) {
         Message msg;
-        int r = read(client->get_server_fd(), &msg, sizeof(msg));
+        int r = SSL_read(client->get_server_ssl(), &msg, sizeof(msg));
         if (r <= 0) {
             std::cerr << "Disconnected from server.\n";
             break;
@@ -85,10 +88,23 @@ void* direct_listener_thread_func(void* arg) {
             continue;
         }
 
+        SSL* peer_ssl = SSL_new(client->get_server_ctx());
+        SSL_set_fd(peer_ssl, peer_fd);
+
+         // P2P 握手
+        if (SSL_accept(peer_ssl) <= 0) {
+            ERR_print_errors_fp(stderr);
+        } else {
+            std::cout << "SSL handshake success (P2P Server)!\n";
+        }
+
         Message msg;
-        int r = read(peer_fd, &msg, sizeof(msg));
+        int r = SSL_read(peer_ssl, &msg, sizeof(msg));
         if (r <= 0) {
+            SSL_shutdown(peer_ssl);
+            SSL_free(peer_ssl);
             close(peer_fd);
+            // std::cerr << "SSL_read fail" << std::endl;
             continue;
         }
 
@@ -96,6 +112,29 @@ void* direct_listener_thread_func(void* arg) {
             std::cout << "Direct message received: " << msg.payload << "\n";
         }
 
+        // SSL_shutdown(peer_ssl);
+
+
+        int shutdown_result = SSL_shutdown(peer_ssl);
+        if (shutdown_result == 0) {
+                // 對端尚未回應 close_notify，進行第二次關閉
+                shutdown_result = SSL_shutdown(peer_ssl);
+        }
+        if (shutdown_result < 0) {
+            int err_code = SSL_get_error(peer_ssl, shutdown_result);
+            std::cerr << "SSL_shutdown failed, error code: " << err_code << std::endl;
+            ERR_print_errors_fp(stderr); // 打印詳細錯誤資訊
+        } else if (shutdown_result == 0) {
+            std::cout << "SSL_shutdown incomplete, waiting for peer's close_notify." << std::endl;
+        }
+
+        SSL_free(peer_ssl);
+
+        // 檢查釋放過程中是否有錯誤
+        if (ERR_peek_error()) {
+            std::cerr << "Errors occurred during SSL_free:" << std::endl;
+            ERR_print_errors_fp(stderr);
+        }
         close(peer_fd);
     }
 
