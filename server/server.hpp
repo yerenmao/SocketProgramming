@@ -3,6 +3,7 @@
 
 #include "threadpool.hpp"
 #include "client_handler.hpp"
+#include "../shared/ssl.hpp"
 #include <string>
 
 class Server {
@@ -18,6 +19,8 @@ private:
     int max_clients;
 
     ThreadPool thread_pool;
+
+    SSL_CTX* ctx;
 
     void accept_clients();
 };

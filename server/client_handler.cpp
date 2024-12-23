@@ -7,20 +7,23 @@
 #include <map>
 #include <pthread.h>
 #include "../shared/message.hpp"
+#include "../shared/ssl.hpp"
 
 /* 管理 Client 資訊*/
 static std::map<int, ClientInfo> clients;                           // 用於把 client_id 對應到 ClientInfo
 static pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;   // client 的 mutex lock
 static int next_client_id = 1;
 
-void handle_message(int client_socket, const Message& msg);
-void send_message(int socket_fd, const Message& msg);
+void handle_message(SSL *client_ssl, int client_socket, const Message& msg);
+void send_message(SSL *client_ssl, int socket_fd, const Message& msg);
 bool get_client_info(int client_id, std::string& ip, int& port);
 
-void handle_client(int client_socket) {
+void handle_client(SSL *client_ssl, int client_socket) {
     Message msg;
-    int bytes_read = read(client_socket, &msg, sizeof(msg));
+    int bytes_read = SSL_read(client_ssl, &msg, sizeof(msg));
     if (bytes_read <= 0) {
+        SSL_shutdown(client_ssl);
+        SSL_free(client_ssl);
         close(client_socket);
         return;
     }
@@ -38,19 +41,21 @@ void handle_client(int client_socket) {
         int assigned_id = -1;
         pthread_mutex_lock(&clients_mutex);
         assigned_id = next_client_id++;
-        clients[assigned_id] = {assigned_id, client_socket, client_ip, listen_port, true};
+        clients[assigned_id] = {assigned_id, client_socket, client_ip, listen_port, true, client_ssl};
         pthread_mutex_unlock(&clients_mutex);
 
         std::cout << "Client joined: ID=" << assigned_id << ", IP=" << client_ip
                   << ", Port=" << listen_port << std::endl;
     } else {
+        SSL_shutdown(client_ssl);
+        SSL_free(client_ssl);
         close(client_socket);
         return;
     }
 
     /* 與 connection 對面的 client 對話 */
     while (true) {
-        int r = read(client_socket, &msg, sizeof(msg));
+        int r = SSL_read(client_ssl, &msg, sizeof(msg));
         if (r <= 0) {
             pthread_mutex_lock(&clients_mutex);
             for (auto& kv : clients) {
@@ -60,11 +65,13 @@ void handle_client(int client_socket) {
                 }
             }
             pthread_mutex_unlock(&clients_mutex);
+            SSL_shutdown(client_ssl);
+            SSL_free(client_ssl);
             close(client_socket);
             return;
         }
 
-        handle_message(client_socket, msg);
+        handle_message(client_ssl, client_socket, msg);
     }
 }
 
@@ -75,14 +82,14 @@ void register_client(int client_socket, const std::string& ip, int listen_port, 
     pthread_mutex_unlock(&clients_mutex);
 }
 
-void handle_message(int client_socket, const Message& msg) {
+void handle_message(SSL *client_ssl, int client_socket, const Message& msg) {
     switch (msg.msg_type) {
         case CHAT: {
             // Relay mode: Find recipient socket and forward the message
             pthread_mutex_lock(&clients_mutex);
             auto it = clients.find(msg.to_id);
             if (it != clients.end() && it->second.online) {
-                send_message(it->second.socket_fd, msg);
+                send_message(it->second.ssl, it->second.socket_fd, msg);
             } else {
                 // Recipient not online - optionally send error back
                 std::cerr << "Recipient not online.\n";
@@ -108,7 +115,7 @@ void handle_message(int client_socket, const Message& msg) {
                 snprintf(resp.payload, MAX_PAYLOAD_SIZE, "NOT_FOUND");
                 resp.payload_size = strlen(resp.payload);
             }
-            send_message(client_socket, resp);
+            send_message(client_ssl, client_socket, resp);
             break;
         }
 
@@ -137,9 +144,9 @@ bool get_client_info(int client_id, std::string& ip, int& port) {
     return false;
 }
 
-void send_message(int socket_fd, const Message& msg) {
+void send_message(SSL *client_ssl, int socket_fd, const Message& msg) {
     // For simplicity, do a blocking write
-    if (write(socket_fd, &msg, sizeof(msg)) < 0) {
+    if (SSL_write(client_ssl, &msg, sizeof(msg)) < 0) {
         perror("send_message failed");
     }
 }
