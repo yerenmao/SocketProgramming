@@ -9,7 +9,13 @@
 
 /* 開 socket，bind，listen */
 Server::Server(int port, int max_clients, int worker_count)
-    : port(port), max_clients(max_clients), thread_pool(worker_count) {
+    : port(port), max_clients(max_clients), thread_pool(worker_count) {}
+
+Server::~Server() {
+    close(server_fd);
+}
+
+void Server::create_socket() {
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
         throw std::runtime_error("Failed to create socket");
@@ -33,10 +39,6 @@ Server::Server(int port, int max_clients, int worker_count)
         close(server_fd);
         throw std::runtime_error("Listen failed");
     }
-}
-
-Server::~Server() {
-    close(server_fd);
 }
 
 void Server::start() {

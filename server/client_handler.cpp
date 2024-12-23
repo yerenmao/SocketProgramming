@@ -1,12 +1,14 @@
 #include "client_handler.hpp"
 
 #include <iostream>
+#include <sstream>
 #include <cstring>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <map>
 #include <pthread.h>
 #include "../shared/message.hpp"
+#include "authentication.hpp"
 
 /* 管理 Client 資訊*/
 static std::map<int, ClientInfo> clients;                           // 用於把 client_id 對應到 ClientInfo
@@ -16,6 +18,7 @@ static int next_client_id = 1;
 void handle_message(int client_socket, const Message& msg);
 void send_message(int socket_fd, const Message& msg);
 bool get_client_info(int client_id, std::string& ip, int& port);
+void handle_authentication(const Message& response);
 
 void handle_client(int client_socket) {
     Message msg;
@@ -77,6 +80,54 @@ void register_client(int client_socket, const std::string& ip, int listen_port, 
 
 void handle_message(int client_socket, const Message& msg) {
     switch (msg.msg_type) {
+        case REGISTER: {
+            // Extract username and password from payload
+            std::istringstream payload_stream(msg.payload);
+            std::string username, password;
+            payload_stream >> username >> password;
+
+            AuthResult result = Authentication::register_user(username, password);
+            std::cout << "[register] " << username << " " << password  << " " << auth_result_to_string(result) << std::endl;
+            
+            // Send response back to client
+            Message response{};
+            response.msg_type = RESPONSE;
+            response.payload_size = snprintf(response.payload, MAX_PAYLOAD_SIZE, "%s", auth_result_to_string(result).c_str());
+            send_message(client_socket, response);
+            break;
+        }
+
+        case LOGIN: {
+            // Extract username and password from payload
+            std::istringstream payload_stream(msg.payload);
+            std::string username, password;
+            payload_stream >> username >> password;
+
+            AuthResult result = Authentication::login_user(username, password);
+            std::cout << "[login] " << username << " " << password  << " " << auth_result_to_string(result) << std::endl;
+
+            // Send response back to client
+            Message response{};
+            if (result == AuthResult::Success) {
+                response.msg_type = LOGIN;
+                response.payload_size = snprintf(response.payload, MAX_PAYLOAD_SIZE, "%s", username.c_str());
+            } else {    
+                response.msg_type = RESPONSE;
+                response.payload_size = snprintf(response.payload, MAX_PAYLOAD_SIZE, "%s", auth_result_to_string(result).c_str());
+            }
+            send_message(client_socket, response);
+            
+            break;
+        }
+
+        case LOGOUT: {
+            // Extract username from payload
+            std::string username(msg.payload, msg.payload_size);
+            Authentication::logout_user(username);
+            std::cout << "[LOGOUT] " << username << " " << auth_result_to_string(AuthResult::Success) << std::endl;
+            break;
+        }
+
         case CHAT: {
             // Relay mode: Find recipient socket and forward the message
             pthread_mutex_lock(&clients_mutex);

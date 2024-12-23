@@ -52,6 +52,12 @@ void* server_listener_thread_func(void* arg) {
         }
 
         switch (msg.msg_type) {
+            case RESPONSE:
+                std::cout << msg.payload << "\n";
+                break;
+            case LOGIN:
+                client->successful_login(msg.payload);
+                break;
             case CHAT:
                 std::cout << "Received chat: " << msg.payload << "\n";
                 break;

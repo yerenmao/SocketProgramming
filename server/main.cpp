@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cstdlib>
 #include "server.hpp"
+#include "authentication.hpp"
 
 int main(int argc, char* argv[]) {
     /* 讀 terminal input */
@@ -12,8 +13,10 @@ int main(int argc, char* argv[]) {
     int max_clients = (argc > 2) ? std::atoi(argv[2]) : 10;  // 控制 listen 時最多可以有幾個 pending connection，預設為 10
     int worker_count = (argc > 3) ? std::atoi(argv[3]) : 10; // 控制 worker thread 的數量，預設為 10
 
+    Authentication::load_user_data();
     try {
         Server server(server_port, max_clients, worker_count);
+        server.create_socket();
         server.start();
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;

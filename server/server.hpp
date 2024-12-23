@@ -11,6 +11,7 @@ public:
     ~Server();
 
     void start();
+    void create_socket();
 
 private:
     int server_fd;
