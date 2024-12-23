@@ -104,7 +104,42 @@ void Client::command_loop() {
             cmd = line.substr(0, space_pos);
         }
 
-        if (cmd == "chat") {
+        if (cmd == "whoami") {
+            // Format: whoami
+            if (this->logged_in) {
+                std::cout << this->username << "\n";
+            } else {
+                std::cout << "Nobody\n";
+            }
+            
+        } else if (cmd == "register") {
+            // Format: register <username> <password>
+            size_t first_space = line.find(' ');
+            size_t second_space = line.find(' ', first_space + 1);
+            if (first_space == std::string::npos || second_space == std::string::npos) {
+                std::cout << "Usage: register <username> <password>\n";
+                continue;
+            }
+
+            std::string username = line.substr(first_space + 1, second_space - first_space - 1);
+            std::string password = line.substr(second_space + 1);
+            register_user(username, password);
+        } else if (cmd == "login") {
+            // Format: login <username> <password>
+            size_t first_space = line.find(' ');
+            size_t second_space = line.find(' ', first_space + 1);
+            if (first_space == std::string::npos || second_space == std::string::npos) {
+                std::cout << "Usage: login <username> <password>\n";
+                continue;
+            }
+
+            std::string username = line.substr(first_space + 1, second_space - first_space - 1);
+            std::string password = line.substr(second_space + 1);
+            login(username, password);
+        } else if (cmd == "logout") {
+            // Format: logout
+            logout();
+        } else if (cmd == "chat") {
             // Format: chat <to_id> <message>
             size_t first_space = line.find(' ');
             size_t second_space = line.find(' ', first_space + 1);
@@ -112,20 +147,9 @@ void Client::command_loop() {
                 std::cout << "Usage: chat <to_id> <message>\n";
                 continue;
             }
-
-            std::string to_id_str = line.substr(first_space + 1, second_space - first_space - 1);
-            std::string msg_str = line.substr(second_space + 1);
-
-            int to_id = std::stoi(to_id_str);
-            Message chat_msg{};
-            chat_msg.msg_type = CHAT;
-            chat_msg.to_id = to_id;
-            std::strncpy(chat_msg.payload, msg_str.c_str(), MAX_PAYLOAD_SIZE);
-            chat_msg.payload_size = msg_str.size();
-
-            if (write(server_fd, &chat_msg, sizeof(chat_msg)) < 0) {
-                perror("write(chat)");
-            }
+            int to_id = std::stoi(line.substr(first_space + 1, second_space - first_space - 1));
+            std::string message = line.substr(second_space + 1);
+            chat(to_id, message);
         } else if (cmd == "request_peer") {
             // Format: request_peer <to_id>
             size_t first_space = line.find(' ');
@@ -133,69 +157,23 @@ void Client::command_loop() {
                 std::cout << "Usage: request_peer <to_id>\n";
                 continue;
             }
-
-            std::string to_id_str = line.substr(first_space + 1);
-            int to_id = std::stoi(to_id_str);
-
-            Message req_msg{};
-            req_msg.msg_type = REQUEST_PEER;
-            req_msg.to_id = to_id;
-
-            if (write(server_fd, &req_msg, sizeof(req_msg)) < 0) {
-                perror("write(request_peer)");
-            }
+            int to_id = std::stoi(line.substr(first_space + 1));
+            request_peer(to_id);
         } else if (cmd == "direct_send") {
             // direct_send <ip> <port> <message>
             // Connect directly to another client and send a message
             // This simulates what you'd do after getting PEER_INFO from server.
-            int first_space = (int)line.find(' ');
-            int second_space = (int)line.find(' ', first_space+1);
-            int third_space = (int)line.find(' ', second_space+1);
-
-            if (first_space == -1 || second_space == -1 || third_space == -1) {
+            size_t first_space = line.find(' ');
+            size_t second_space = line.find(' ', first_space + 1);
+            size_t third_space = line.find(' ', second_space + 1);
+            if (first_space == std::string::npos || second_space == std::string::npos || third_space == std::string::npos) {
                 std::cout << "Usage: direct_send <ip> <port> <message>\n";
                 continue;
             }
-
-            std::string peer_ip = line.substr(first_space+1, second_space - first_space - 1);
-            std::string port_str = line.substr(second_space+1, third_space - second_space - 1);
-            int peer_port = atoi(port_str.c_str());
-            std::string direct_msg_str = line.substr(third_space+1);
-
-            // Create socket and connect
-            int peer_fd = socket(AF_INET, SOCK_STREAM, 0);
-            if (peer_fd < 0) {
-                perror("socket(direct_send)");
-                continue;
-            }
-
-            struct sockaddr_in peer_addr;
-            memset(&peer_addr, 0, sizeof(peer_addr));
-            peer_addr.sin_family = AF_INET;
-            peer_addr.sin_port = htons(peer_port);
-            if (inet_pton(AF_INET, peer_ip.c_str(), &peer_addr.sin_addr) <= 0) {
-                perror("inet_pton(direct_send)");
-                close(peer_fd);
-                continue;
-            }
-
-            if (connect(peer_fd, (struct sockaddr*)&peer_addr, sizeof(peer_addr)) < 0) {
-                perror("connect(direct_send)");
-                close(peer_fd);
-                continue;
-            }
-
-            // Send a message in the same Message format
-            Message direct_msg;
-            memset(&direct_msg, 0, sizeof(direct_msg));
-            direct_msg.msg_type = DIRECT_MSG;
-            strncpy(direct_msg.payload, direct_msg_str.c_str(), MAX_PAYLOAD_SIZE);
-            direct_msg.payload_size = (int)strlen(direct_msg.payload);
-
-            if (write(peer_fd, &direct_msg, sizeof(direct_msg)) < 0) {
-                perror("write(direct_msg)");
-            }
-            close(peer_fd);
+            std::string peer_ip = line.substr(first_space + 1, second_space - first_space - 1);
+            int peer_port = std::stoi(line.substr(second_space + 1, third_space - second_space - 1));
+            std::string message = line.substr(third_space + 1);
+            direct_send(peer_ip, peer_port, message);
         } else {
             std::cout << "Unknown command: " << cmd << "\n";
         }
@@ -210,3 +188,116 @@ void Client::cleanup() {
     pthread_join(server_listener_thread, nullptr);
     pthread_join(direct_listener_thread, nullptr);
 }
+
+void Client::login(const std::string& username, const std::string& password) {
+    if (logged_in) {
+        std::cout << "Already logged in as " << this->username << ".\n";
+        return;
+    }
+
+    Message login_msg{};
+    login_msg.msg_type = LOGIN;
+    snprintf(login_msg.payload, MAX_PAYLOAD_SIZE, "%s %s", username.c_str(), password.c_str());
+    login_msg.payload_size = strlen(login_msg.payload);
+
+    if (write(server_fd, &login_msg, sizeof(login_msg)) < 0) {
+        perror("write(login)");
+        return;
+    }
+}
+
+void Client::successful_login(const std::string& username) {
+    this->logged_in = true;
+    this->username = username;
+    std::cout << "Success\n";
+}
+
+void Client::logout() {
+    if (!logged_in) {
+        std::cout << "Not logged in.\n";
+        return;
+    }
+
+    Message logout_msg{};
+    logout_msg.msg_type = LOGOUT;
+    logout_msg.payload_size = snprintf(logout_msg.payload, MAX_PAYLOAD_SIZE, "%s", username.c_str());
+
+    if (write(server_fd, &logout_msg, sizeof(logout_msg)) < 0) {
+        perror("write(logout)");
+        return;
+    }
+
+    // Clear client-side login state
+    this->username.clear();
+    this->logged_in = false;
+    std::cout << "Success\n";
+}
+
+void Client::register_user(const std::string& username, const std::string& password) {
+    Message register_msg{};
+    register_msg.msg_type = REGISTER;
+    snprintf(register_msg.payload, MAX_PAYLOAD_SIZE, "%s %s", username.c_str(), password.c_str());
+    register_msg.payload_size = strlen(register_msg.payload);
+
+    if (write(server_fd, &register_msg, sizeof(register_msg)) < 0) {
+        perror("write(register)");
+        return;
+    }
+}
+
+void Client::chat(int to_id, const std::string& message) {
+    Message chat_msg{};
+    chat_msg.msg_type = CHAT;
+    chat_msg.to_id = to_id;
+    std::strncpy(chat_msg.payload, message.c_str(), MAX_PAYLOAD_SIZE);
+    chat_msg.payload_size = message.size();
+
+    if (write(server_fd, &chat_msg, sizeof(chat_msg)) < 0) {
+        perror("write(chat)");
+    }
+}
+
+void Client::request_peer(int to_id) {
+    Message req_msg{};
+    req_msg.msg_type = REQUEST_PEER;
+    req_msg.to_id = to_id;
+
+    if (write(server_fd, &req_msg, sizeof(req_msg)) < 0) {
+        perror("write(request_peer)");
+    }
+}
+
+void Client::direct_send(const std::string& peer_ip, int peer_port, const std::string& message) {
+    int peer_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (peer_fd < 0) {
+        perror("socket(direct_send)");
+        return;
+    }
+
+    struct sockaddr_in peer_addr;
+    memset(&peer_addr, 0, sizeof(peer_addr));
+    peer_addr.sin_family = AF_INET;
+    peer_addr.sin_port = htons(peer_port);
+    if (inet_pton(AF_INET, peer_ip.c_str(), &peer_addr.sin_addr) <= 0) {
+        perror("inet_pton(direct_send)");
+        close(peer_fd);
+        return;
+    }
+
+    if (connect(peer_fd, (struct sockaddr*)&peer_addr, sizeof(peer_addr)) < 0) {
+        perror("connect(direct_send)");
+        close(peer_fd);
+        return;
+    }
+
+    Message direct_msg{};
+    direct_msg.msg_type = DIRECT_MSG;
+    std::strncpy(direct_msg.payload, message.c_str(), MAX_PAYLOAD_SIZE);
+    direct_msg.payload_size = message.size();
+
+    if (write(peer_fd, &direct_msg, sizeof(direct_msg)) < 0) {
+        perror("write(direct_msg)");
+    }
+    close(peer_fd);
+}
+
