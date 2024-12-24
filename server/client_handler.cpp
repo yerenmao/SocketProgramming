@@ -20,6 +20,7 @@ void handle_message(SSL *client_ssl, int client_socket, const Message& msg);
 void send_message(SSL *client_ssl, int socket_fd, const Message& msg);
 bool get_client_info(int client_id, std::string& ip, int& port);
 void handle_authentication(const Message& response);
+void transfer_file(SSL *src_client_ssl, SSL *dst_client_ssl, int socket_fd);
 
 void handle_client(SSL *client_ssl, int client_socket) {
     Message msg;
@@ -171,7 +172,18 @@ void handle_message(SSL *client_ssl, int client_socket, const Message& msg) {
         }
 
         case RELAY_SEND_FILE: {
-            // TODO
+            // Relay mode: Find recipient socket and forward the message
+            pthread_mutex_lock(&clients_mutex);
+            auto it = clients.find(msg.to_id);
+            if (it != clients.end() && it->second.online) {
+                send_message(it->second.ssl, it->second.socket_fd, msg);
+            } else {
+                // Recipient not online - optionally send error back
+                std::cerr << "Recipient not online.\n";
+            }
+            pthread_mutex_unlock(&clients_mutex);
+
+            transfer_file(client_ssl, it->second.ssl, it->second.socket_fd);
             break;
         }
 
@@ -204,5 +216,56 @@ void send_message(SSL *client_ssl, int socket_fd, const Message& msg) {
     // For simplicity, do a blocking write
     if (SSL_write(client_ssl, &msg, sizeof(msg)) < 0) {
         perror("send_message failed");
+    }
+}
+
+void transfer_file(SSL *src_client_ssl, SSL *dst_client_ssl, int socket_fd){
+    // 轉傳檔案的 metadata
+    Message metadata;
+    memset(&metadata, 0, sizeof(metadata));
+
+    int metadata_len = SSL_read(src_client_ssl, &metadata, sizeof(metadata));
+    if (metadata_len <= 0) {
+        std::cerr << "Failed to receive file metadata." << std::endl;
+        return;
+    }
+
+    if(metadata.msg_type != TRANSFER_FILE_CONTENT){
+        std::cerr << "messgae type is not TRANSFER_FILE_CONTENT" << std::endl;
+    }
+
+    if (SSL_write(dst_client_ssl, &metadata, sizeof(metadata)) < 0) {
+        perror("write(direct_msg)");
+        std::cerr << "Failed to send file metadata." << std::endl;
+        return;
+    }
+
+    char* file_name = strtok(metadata.payload, " ");
+    char* file_size_str = strtok(NULL, " ");
+    int file_size = atoi(file_size_str);
+
+    // 轉傳檔案內容
+    size_t received_size = 0;
+    Message content;
+    memset(&content, 0, sizeof(content));
+    while (received_size < file_size) {
+        if (SSL_read(src_client_ssl, &content, sizeof(content)) <= 0) {
+            std::cerr << "Failed to receive file data." << std::endl;
+            break;
+        }
+        if(content.msg_type != TRANSFER_FILE_CONTENT){
+            std::cerr << "messgae type is not TRANSFER_FILE_CONTENT" << std::endl;
+        }
+        if(SSL_write(dst_client_ssl, &content, sizeof(content)) < 0){
+            std::cerr << "transfer file fail : can't send content to receiver" << std::endl;
+            break;
+        }
+        received_size += content.payload_size;
+    }
+
+    if (received_size == file_size) {
+        std::cout << "[File transfer] " << file_name << std::endl;
+    } else {
+        std::cerr << "File transfer incomplete." << std::endl;
     }
 }

@@ -1,6 +1,8 @@
 #include "client.hpp"
 #include "thread_handlers.hpp"
 #include <iostream>
+#include <fstream>
+#include <cstdlib>
 #include <cstring>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -335,27 +337,171 @@ void Client::request_peer(int to_id) {
 }
 
 void Client::direct_send(const std::string& peer_ip, int peer_port, const std::string& message) {
+    int peer_fd;
+    SSL* peer_ssl = ssl_connect(peer_ip, peer_port, peer_fd);
+
+    // Send a message in the same Message format
+    Message direct_msg;
+    memset(&direct_msg, 0, sizeof(direct_msg));
+    direct_msg.msg_type = DIRECT_MSG;
+    strncpy(direct_msg.payload, message.c_str(), MAX_PAYLOAD_SIZE);
+    direct_msg.payload_size = (int)strlen(direct_msg.payload);
+
+    if (SSL_write(peer_ssl, &direct_msg, sizeof(direct_msg)) < 0) {
+        perror("write(direct_msg)");
+    }
+
+    ssl_free(peer_ssl, peer_fd);
+}
+
+void Client::direct_send_file(const std::string& peer_ip, int peer_port, const std::string& filename){
+    int peer_fd;
+    SSL* peer_ssl = ssl_connect(peer_ip, peer_port, peer_fd);
+
+    /* 通知對端要傳檔案了 */
+    Message inform_msg;
+    memset(&inform_msg, 0, sizeof(inform_msg));
+    inform_msg.msg_type = DIRECT_SEND_FILE;
+    if (SSL_write(peer_ssl, &inform_msg, sizeof(inform_msg)) < 0) {
+        perror("write(direct_msg)");
+        return;
+    }
+
+    send_file(peer_ssl, filename);
+
+    ssl_free(peer_ssl, peer_fd);
+}
+
+void Client::relay_send_file(int to_id, const std::string& filename){
+    /* 通知對端要傳檔案了 */
+    Message inform_msg;
+    memset(&inform_msg, 0, sizeof(inform_msg));
+    inform_msg.msg_type = RELAY_SEND_FILE;
+    inform_msg.to_id = to_id;
+
+    if (SSL_write(server_ssl, &inform_msg, sizeof(inform_msg)) < 0) {
+        perror("write(chat)");
+    }
+
+    send_file(server_ssl, filename);
+}
+
+void send_file(SSL* ssl, const std::string& filename){
+    std::ifstream file(filename, std::ios::binary);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open file: " << filename << std::endl;
+        return;
+    }
+
+    // 發送檔案的 metadata（檔名和大小）
+    std::string file_name = filename.substr(filename.find_last_of('/') + 1);
+    file.seekg(0, std::ios::end);
+    size_t file_size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    Message metadata;
+    memset(&metadata, 0, sizeof(metadata));
+    metadata.msg_type = TRANSFER_FILE_CONTENT;
+    snprintf(metadata.payload, MAX_PAYLOAD_SIZE, "%s %d", file_name.c_str(), file_size);
+    metadata.payload_size = (int)strlen(metadata.payload);
+
+    if (SSL_write(ssl, &metadata, sizeof(metadata)) < 0) {
+        perror("write(direct_msg)");
+        std::cerr << "Failed to send file metadata." << std::endl;
+        return;
+    }
+
+    // 發送檔案內容
+    Message content;
+    memset(&content, 0, sizeof(content));
+    content.msg_type = TRANSFER_FILE_CONTENT;
+    while (file.read(content.payload, MAX_PAYLOAD_SIZE) || file.gcount() > 0) {
+        content.payload_size = (int)strlen(content.payload);
+        if (SSL_write(ssl, &content, sizeof(content)) < 0) {
+            std::cerr << "Failed to send file data." << std::endl;
+            break;
+        }
+    }
+
+    std::cout << "File sent successfully!" << std::endl;
+    file.close();
+}
+
+void recv_file(SSL* ssl){
+    // 先接收檔案的 metadata
+    Message metadata;
+    memset(&metadata, 0, sizeof(metadata));
+
+    int metadata_len = SSL_read(ssl, &metadata, sizeof(metadata));
+    if (metadata_len <= 0) {
+        std::cerr << "Failed to receive file metadata." << std::endl;
+        return;
+    }
+
+    std::cout << metadata.msg_type << std::endl;
+
+    char* file_name = strtok(metadata.payload, " ");
+    char* file_size_str = strtok(NULL, " ");
+    int file_size = atoi(file_size_str);
+
+    std::cout << "Receiving " << file_name << "("  << file_size << " bytes)......." << std::endl;
+
+    std::string new_file_name = file_name;
+    new_file_name = "recv_" + new_file_name; // 新增的檔名先加個 prefix 檔一下撞名
+
+    // 創建新檔案
+    std::ofstream file(new_file_name, std::ios::binary);
+    if (!file.is_open()) {
+        std::cerr << "Failed to create file: " << new_file_name << std::endl;
+        return;
+    }
+
+    // 接收檔案內容
+    size_t received_size = 0;
+    Message content;
+    memset(&content, 0, sizeof(content));
+    while (received_size < file_size) {
+        if (SSL_read(ssl, &content, sizeof(content)) <= 0) {
+            std::cerr << "Failed to receive file data." << std::endl;
+            break;
+        }
+        if(content.msg_type != TRANSFER_FILE_CONTENT){
+            std::cerr << "messgae type is not TRANSFER_FILE_CONTENT" << std::endl;
+        }
+        file.write(content.payload, content.payload_size);
+        received_size += content.payload_size;
+    }
+
+    if (received_size == file_size) {
+        std::cout << "File received successfully!" << std::endl;
+    } else {
+        std::cerr << "File transfer incomplete." << std::endl;
+    }
+    file.close();
+}
+
+SSL* Client::ssl_connect(const std::string& ip, int port, int& peer_fd){
     // Create socket and connect
-    int peer_fd = socket(AF_INET, SOCK_STREAM, 0);
+    peer_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (peer_fd < 0) {
         perror("socket(direct_send)");
-        return;
+        return nullptr;
     }
 
     struct sockaddr_in peer_addr;
     memset(&peer_addr, 0, sizeof(peer_addr));
     peer_addr.sin_family = AF_INET;
-    peer_addr.sin_port = htons(peer_port);
-    if (inet_pton(AF_INET, peer_ip.c_str(), &peer_addr.sin_addr) <= 0) {
+    peer_addr.sin_port = htons(port);
+    if (inet_pton(AF_INET, ip.c_str(), &peer_addr.sin_addr) <= 0) {
         perror("inet_pton(direct_send)");
         close(peer_fd);
-        return;
+        return nullptr;
     }
 
     if (connect(peer_fd, (struct sockaddr*)&peer_addr, sizeof(peer_addr)) < 0) {
         perror("connect(direct_send)");
         close(peer_fd);
-        return;
+        return nullptr;
     }
 
     // 建立 SSL 並綁定 socket
@@ -375,31 +521,24 @@ void Client::direct_send(const std::string& peer_ip, int peer_port, const std::s
         std::cout << "SSL handshake success (P2P Client)!\n";
     }
 
-    // Send a message in the same Message format
-    Message direct_msg;
-    memset(&direct_msg, 0, sizeof(direct_msg));
-    direct_msg.msg_type = DIRECT_MSG;
-    strncpy(direct_msg.payload, message.c_str(), MAX_PAYLOAD_SIZE);
-    direct_msg.payload_size = (int)strlen(direct_msg.payload);
+    return peer_ssl;
+}
 
-    if (SSL_write(peer_ssl, &direct_msg, sizeof(direct_msg)) < 0) {
-        perror("write(direct_msg)");
-    }
-
-    int shutdown_result = SSL_shutdown(peer_ssl);
+void ssl_free(SSL* ssl, int fd){
+    int shutdown_result = SSL_shutdown(ssl);
     if (shutdown_result == 0) {
         // 對端尚未回應 close_notify，進行第二次關閉
-        shutdown_result = SSL_shutdown(peer_ssl);
+        shutdown_result = SSL_shutdown(ssl);
     }
     if (shutdown_result < 0) {
-        int err_code = SSL_get_error(peer_ssl, shutdown_result);
+        int err_code = SSL_get_error(ssl, shutdown_result);
         std::cerr << "SSL_shutdown failed, error code: " << err_code << std::endl;
         ERR_print_errors_fp(stderr); // 打印詳細錯誤資訊
     } else if (shutdown_result == 0) {
         std::cout << "SSL_shutdown incomplete, waiting for peer's close_notify." << std::endl;
     }
 
-    SSL_free(peer_ssl);
+    SSL_free(ssl);
 
     // 檢查釋放過程中是否有錯誤
     if (ERR_peek_error()) {
@@ -407,15 +546,5 @@ void Client::direct_send(const std::string& peer_ip, int peer_port, const std::s
         ERR_print_errors_fp(stderr);
     }
 
-    close(peer_fd);
-}
-
-void direct_send_file(const std::string& peer_ip, int peer_port, const std::string& filename){
-    // TODO
-    return;
-}
-
-void relay_send_file(int to_id, const std::string& filename){
-    // TODO
-    return;
+    close(fd);
 }

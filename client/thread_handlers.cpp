@@ -68,7 +68,7 @@ void* server_listener_thread_func(void* arg) {
                 std::cout << "Peer info: " << msg.payload << "\n";
                 break;
             case RELAY_SEND_FILE:
-                // TODO
+                recv_file(client->get_server_ssl());
                 break;
             default:
                 std::cout << "Unknown message type: " << msg.msg_type << "\n";
@@ -114,33 +114,10 @@ void* direct_listener_thread_func(void* arg) {
         if (msg.msg_type == DIRECT_MSG) {
             std::cout << "Direct message received: " << msg.payload << "\n";
         } else if(msg.msg_type == DIRECT_SEND_FILE) {
-            // TODO        
+            recv_file(peer_ssl);   
         }
 
-        // SSL_shutdown(peer_ssl);
-
-
-        int shutdown_result = SSL_shutdown(peer_ssl);
-        if (shutdown_result == 0) {
-                // 對端尚未回應 close_notify，進行第二次關閉
-                shutdown_result = SSL_shutdown(peer_ssl);
-        }
-        if (shutdown_result < 0) {
-            int err_code = SSL_get_error(peer_ssl, shutdown_result);
-            std::cerr << "SSL_shutdown failed, error code: " << err_code << std::endl;
-            ERR_print_errors_fp(stderr); // 打印詳細錯誤資訊
-        } else if (shutdown_result == 0) {
-            std::cout << "SSL_shutdown incomplete, waiting for peer's close_notify." << std::endl;
-        }
-
-        SSL_free(peer_ssl);
-
-        // 檢查釋放過程中是否有錯誤
-        if (ERR_peek_error()) {
-            std::cerr << "Errors occurred during SSL_free:" << std::endl;
-            ERR_print_errors_fp(stderr);
-        }
-        close(peer_fd);
+        ssl_free(peer_ssl, peer_fd);
     }
 
     return nullptr;

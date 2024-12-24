@@ -26,6 +26,8 @@ enum MsgType {
 
     DIRECT_SEND_FILE = 6,
     RELAY_SEND_FILE = 7,
+    
+    TRANSFER_FILE_CONTENT = 8,
 
     REGISTER = 10,
     LOGIN = 11,

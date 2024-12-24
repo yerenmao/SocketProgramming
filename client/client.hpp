@@ -48,7 +48,14 @@ private:
     void direct_send_file(const std::string& peer_ip, int peer_port, const std::string& filename);
     void relay_send_file(int to_id, const std::string& filename);
 
+    SSL* ssl_connect(const std::string& ip, int port, int& fd);
+    
+
     static bool running;
 };
+
+void send_file(SSL* ssl, const std::string& filename);
+void recv_file(SSL* ssl);
+void ssl_free(SSL* ssl, int fd);
 
 #endif // CLIENT_HPP
