@@ -170,6 +170,11 @@ void handle_message(SSL *client_ssl, int client_socket, const Message& msg) {
             break;
         }
 
+        case RELAY_SEND_FILE: {
+            // TODO
+            break;
+        }
+
         case DIRECT_MSG: {
             // Direct message handling if routed through the server
             // Typically, direct mode will bypass the server and use P2P.

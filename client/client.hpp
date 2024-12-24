@@ -44,6 +44,10 @@ private:
     void request_peer(int to_id);
     void direct_send(const std::string& peer_ip, int peer_port, const std::string& message);
 
+    /* Transfer file feature */
+    void direct_send_file(const std::string& peer_ip, int peer_port, const std::string& filename);
+    void relay_send_file(int to_id, const std::string& filename);
+
     static bool running;
 };
 

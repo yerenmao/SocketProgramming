@@ -67,6 +67,9 @@ void* server_listener_thread_func(void* arg) {
             case PEER_INFO:
                 std::cout << "Peer info: " << msg.payload << "\n";
                 break;
+            case RELAY_SEND_FILE:
+                // TODO
+                break;
             default:
                 std::cout << "Unknown message type: " << msg.msg_type << "\n";
         }
@@ -110,6 +113,8 @@ void* direct_listener_thread_func(void* arg) {
 
         if (msg.msg_type == DIRECT_MSG) {
             std::cout << "Direct message received: " << msg.payload << "\n";
+        } else if(msg.msg_type == DIRECT_SEND_FILE) {
+            // TODO        
         }
 
         // SSL_shutdown(peer_ssl);

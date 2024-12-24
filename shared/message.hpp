@@ -24,6 +24,9 @@ enum MsgType {
     PEER_INFO = 4,    // Response containing peer info
     DIRECT_MSG = 5,   // Direct message type (if relayed via server for fallback)
 
+    DIRECT_SEND_FILE = 6,
+    RELAY_SEND_FILE = 7,
+
     REGISTER = 10,
     LOGIN = 11,
     LOGOUT = 12,

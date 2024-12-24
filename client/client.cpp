@@ -214,6 +214,33 @@ void Client::command_loop() {
             int peer_port = std::stoi(line.substr(second_space + 1, third_space - second_space - 1));
             std::string message = line.substr(third_space + 1);
             direct_send(peer_ip, peer_port, message);
+        } else if (cmd == "direct_send_file") {
+            // direct_send <ip> <port> <filename>
+            // Connect directly to another client and send a file
+            size_t first_space = line.find(' ');
+            size_t second_space = line.find(' ', first_space + 1);
+            size_t third_space = line.find(' ', second_space + 1);
+            if (first_space == std::string::npos || second_space == std::string::npos || third_space == std::string::npos) {
+                std::cout << "Usage: direct_send_file <ip> <port> <filename>\n";
+                continue;
+            }
+
+            std::string peer_ip = line.substr(first_space + 1, second_space - first_space - 1);
+            int peer_port = std::stoi(line.substr(second_space + 1, third_space - second_space - 1));
+            std::string filename = line.substr(third_space + 1);
+            direct_send_file(peer_ip, peer_port, filename);
+        } else if (cmd == "relay_send_file") {
+            // Format: relay_send_file <to_id> <filename>
+            size_t first_space = line.find(' ');
+            size_t second_space = line.find(' ', first_space + 1);
+            if (first_space == std::string::npos || second_space == std::string::npos) {
+                std::cout << "Usage: relay_send_file <to_id> <filename>\n";
+                continue;
+            }
+
+            int to_id = std::stoi(line.substr(first_space + 1, second_space - first_space - 1));
+            std::string filename = line.substr(second_space + 1);
+            relay_send_file(to_id, filename);
         } else {
             std::cout << "Unknown command: " << cmd << "\n";
         }
@@ -383,3 +410,12 @@ void Client::direct_send(const std::string& peer_ip, int peer_port, const std::s
     close(peer_fd);
 }
 
+void direct_send_file(const std::string& peer_ip, int peer_port, const std::string& filename){
+    // TODO
+    return;
+}
+
+void relay_send_file(int to_id, const std::string& filename){
+    // TODO
+    return;
+}
