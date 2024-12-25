@@ -2,8 +2,8 @@
 CXX = g++
 # CXXFLAGS = -Wall -Wextra -pthread -std=c++17
 CXXFLAGS = -Wall -Wextra -pthread -std=c++17 \
--I/opt/homebrew/opt/openssl@3/include -L/opt/homebrew/opt/openssl@3/lib -lssl -lcrypto
-
+-I/opt/homebrew/opt/openssl@3/include -L/opt/homebrew/opt/openssl@3/lib -lssl -lcrypto \
+-I/opt/homebrew/opt/opencv@4/include/opencv4 -L/opt/homebrew/opt/opencv@4/lib -lopencv_videoio -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc
 
 # Directories
 CLIENT_DIR = client

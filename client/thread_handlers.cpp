@@ -7,6 +7,7 @@
 #include "client.hpp"
 #include "../shared/message.hpp"
 #include "../shared/ssl.hpp"
+#include "../shared/streaming.hpp"
 
 /* 此 function 會開一個 socket 並聽在給定的 port (client 會傳 my_listen_port) */
 int create_listening_socket(SSL_CTX* ctx, int port) {
@@ -70,6 +71,9 @@ void* server_listener_thread_func(void* arg) {
             case RELAY_SEND_FILE:
                 recv_file(client->get_server_ssl());
                 break;
+            case RELAY_STREAMING:
+                enqueue_frame(client->get_streaming_queue(), client->get_server_ssl());
+                break;
             default:
                 std::cout << "Unknown message type: " << msg.msg_type << "\n";
         }
@@ -115,8 +119,10 @@ void* direct_listener_thread_func(void* arg) {
             std::cout << "Direct message received: " << msg.payload << "\n";
         } else if(msg.msg_type == DIRECT_SEND_FILE) {
             recv_file(peer_ssl);   
+        } else if(msg.msg_type == DIRECT_STREAMING) {
+            enqueue_frame(client->get_streaming_queue(), peer_ssl);
         }
-
+        std::cout << "The line before direct_listener_thread_func's ssl_free\n";
         ssl_free(peer_ssl, peer_fd);
     }
 

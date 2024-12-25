@@ -7,9 +7,10 @@
 #include <arpa/inet.h>
 #include <map>
 #include <pthread.h>
-#include "../shared/message.hpp"
 #include "authentication.hpp"
+#include "../shared/message.hpp"
 #include "../shared/ssl.hpp"
+#include "../shared/streaming.hpp"
 
 /* 管理 Client 資訊*/
 static std::map<int, ClientInfo> clients;                           // 用於把 client_id 對應到 ClientInfo
@@ -187,6 +188,24 @@ void handle_message(SSL *client_ssl, int client_socket, const Message& msg) {
             break;
         }
 
+        case RELAY_STREAMING: {
+            // Lock the clients map to find the recipient
+            pthread_mutex_lock(&clients_mutex);
+            auto it = clients.find(msg.to_id);
+            if (it == clients.end() || !it->second.online) {
+                // Recipient not online or doesn't exist
+                std::cerr << "Recipient not online or does not exist.\n";
+                pthread_mutex_unlock(&clients_mutex);
+                break;
+            }
+
+            SSL* recipient_ssl = it->second.ssl; // Get recipient's SSL connection
+            pthread_mutex_unlock(&clients_mutex);
+
+            streaming(client_ssl, recipient_ssl);
+            break;
+        }
+
         case DIRECT_MSG: {
             // Direct message handling if routed through the server
             // Typically, direct mode will bypass the server and use P2P.
@@ -268,4 +287,33 @@ void transfer_file(SSL *src_client_ssl, SSL *dst_client_ssl, int socket_fd){
     } else {
         std::cerr << "File transfer incomplete." << std::endl;
     }
+}
+
+void streaming(SSL *client_ssl, SSL *recipient_ssl) {
+    // std::cout << "Starting relay streaming from client " << msg.from_id << " to client " << msg.to_id << ".\n";
+
+    Message notify_msg{};
+    notify_msg.msg_type = RELAY_STREAMING;
+    if (SSL_write(recipient_ssl, &notify_msg, sizeof(notify_msg)) <= 0) {
+        std::cerr << "Failed to inform receiver about relay streaming session.\n";
+        return;
+    }
+    // Relay streaming frames
+    while (true) {
+        // Receive a frame from the sender
+        auto frame_data = receive_frame(client_ssl);
+
+        // Check for EOF (empty frame)
+        if (frame_data.empty()) {
+            // std::cout << "End of stream received from client " << msg.from_id << ".\n";
+            send_frame(recipient_ssl, frame_data); // Forward EOF to recipient
+            break;
+        }
+
+        // Forward the frame to the recipient
+        send_frame(recipient_ssl, frame_data);
+    }
+
+    // std::cout << "Relay streaming completed from client " << msg.from_id
+    //         << " to client " << msg.to_id << ".\n";
 }

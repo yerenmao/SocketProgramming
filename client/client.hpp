@@ -3,8 +3,10 @@
 
 #include <string>
 #include <pthread.h>
+#include <opencv2/opencv.hpp>
 #include "../shared/message.hpp"
 #include "../shared/ssl.hpp"
+#include "../shared/streaming.hpp"
 
 class Client {
 public:
@@ -21,6 +23,7 @@ public:
     SSL_CTX* get_server_ctx() const {return server_ctx; }
     int get_direct_listen_fd() const { return direct_listen_fd; }
     void successful_login(const std::string& username);
+    StreamingQueue& get_streaming_queue();
 
 private:
     int server_fd;
@@ -47,6 +50,12 @@ private:
     /* Transfer file feature */
     void direct_send_file(const std::string& peer_ip, int peer_port, const std::string& filename);
     void relay_send_file(int to_id, const std::string& filename);
+
+    /* Streaming feature */
+    StreamingQueue streaming_queue;
+    void direct_streaming(const std::string& peer_ip, int peer_port, const std::string& filename);
+    void relay_streaming(int to_id, const std::string& filename);
+    void receive_streaming();
 
     SSL* ssl_connect(const std::string& ip, int port, int& fd);
     
