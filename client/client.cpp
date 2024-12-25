@@ -258,7 +258,16 @@ void Client::command_loop() {
             std::string filename = line.substr(third_space + 1);
             direct_streaming(peer_ip, peer_port, filename);
         } else if (cmd == "relay_streaming") {
-            
+            // Format: relay_streaming <to_id> <filename>
+            size_t first_space = line.find(' ');
+            size_t second_space = line.find(' ', first_space + 1);
+            if (first_space == std::string::npos || second_space == std::string::npos) {
+                std::cout << "Usage: relay_streaming <to_id> <filename>\n";
+                continue;
+            }
+            int to_id = std::stoi(line.substr(first_space + 1, second_space - first_space - 1));
+            std::string filename = line.substr(second_space + 1);
+            relay_streaming(to_id, filename);
         } else if (cmd == "receive_streaming") {
             // Format: receive_streaming
             std::cout << "Entering receiving streaming mode...\n";
@@ -427,6 +436,20 @@ void Client::relay_send_file(int to_id, const std::string& filename){
     }
 
     send_file(server_ssl, filename);
+}
+
+void Client::relay_streaming(int to_id, const std::string& filename) {
+    Message inform_msg;
+    memset(&inform_msg, 0, sizeof(inform_msg));
+    inform_msg.msg_type = RELAY_STREAMING;
+    inform_msg.to_id = to_id;
+    if (SSL_write(server_ssl, &inform_msg, sizeof(inform_msg)) < 0) {
+        perror("write(direct_msg)");
+        return;
+    }
+
+    stream_video(server_ssl, filename);
+    std::cout << "Streaming session ended.\n";
 }
 
 void Client::receive_streaming() {

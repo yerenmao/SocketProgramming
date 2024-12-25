@@ -71,6 +71,9 @@ void* server_listener_thread_func(void* arg) {
             case RELAY_SEND_FILE:
                 recv_file(client->get_server_ssl());
                 break;
+            case RELAY_STREAMING:
+                enqueue_frame(client->get_streaming_queue(), client->get_server_ssl());
+                break;
             default:
                 std::cout << "Unknown message type: " << msg.msg_type << "\n";
         }

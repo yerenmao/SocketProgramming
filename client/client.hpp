@@ -54,6 +54,7 @@ private:
     /* Streaming feature */
     StreamingQueue streaming_queue;
     void direct_streaming(const std::string& peer_ip, int peer_port, const std::string& filename);
+    void relay_streaming(int to_id, const std::string& filename);
     void receive_streaming();
 
     SSL* ssl_connect(const std::string& ip, int port, int& fd);
