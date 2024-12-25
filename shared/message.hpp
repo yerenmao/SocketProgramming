@@ -32,6 +32,9 @@ enum MsgType {
     REGISTER = 10,
     LOGIN = 11,
     LOGOUT = 12,
+
+    DIRECT_STREAMING = 16,
+    RELAY_STREAMING = 17,
     // Add more types: FILE_INIT, FILE_CHUNK, VIDEO_FRAME, etc.
 };
 

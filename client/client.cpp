@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include "../shared/message.hpp"
 #include "../shared/ssl.hpp"
+#include "../shared/streaming.hpp"
 
 bool Client::running = true;
 
@@ -243,6 +244,25 @@ void Client::command_loop() {
             int to_id = std::stoi(line.substr(first_space + 1, second_space - first_space - 1));
             std::string filename = line.substr(second_space + 1);
             relay_send_file(to_id, filename);
+        } else if (cmd == "direct_streaming") {
+            // Format: direct_streaming <ip> <port> <video/audio filename>
+            size_t first_space = line.find(' ');
+            size_t second_space = line.find(' ', first_space + 1);
+            size_t third_space = line.find(' ', second_space + 1);
+            if (first_space == std::string::npos || second_space == std::string::npos || third_space == std::string::npos) {
+                std::cout << "Usage: direct_streaming <ip> <port> <video/audio filename>\n";
+                continue;
+            }
+            std::string peer_ip = line.substr(first_space + 1, second_space - first_space - 1);
+            int peer_port = std::stoi(line.substr(second_space + 1, third_space - second_space - 1));
+            std::string filename = line.substr(third_space + 1);
+            direct_streaming(peer_ip, peer_port, filename);
+        } else if (cmd == "relay_streaming") {
+            
+        } else if (cmd == "receive_streaming") {
+            // Format: receive_streaming
+            std::cout << "Entering receiving streaming mode...\n";
+            receive_streaming();
         } else {
             std::cout << "Unknown command: " << cmd << "\n";
         }
@@ -270,8 +290,8 @@ void Client::login(const std::string& username, const std::string& password) {
     login_msg.payload_size = strlen(login_msg.payload);
 
     if (SSL_write(server_ssl, &login_msg, sizeof(login_msg)) < 0) {
-        perror("write(login)");
-        return;
+        std::cerr << "SSL_write failed: " << strerror(errno) << "\n";
+        ERR_print_errors_fp(stderr); // For OpenSSL-specific errors
     }
 }
 
@@ -372,6 +392,29 @@ void Client::direct_send_file(const std::string& peer_ip, int peer_port, const s
     ssl_free(peer_ssl, peer_fd);
 }
 
+void Client::direct_streaming(const std::string& peer_ip, int peer_port, const std::string& filename) {
+    int peer_fd;
+    SSL* peer_ssl = ssl_connect(peer_ip, peer_port, peer_fd);
+
+    if (!peer_ssl) {
+        std::cerr << "Error: Failed to establish SSL connection.\n";
+        return;
+    }
+    /* 通知對端要開始 streaming 了 */
+    Message inform_msg;
+    memset(&inform_msg, 0, sizeof(inform_msg));
+    inform_msg.msg_type = DIRECT_STREAMING;
+    if (SSL_write(peer_ssl, &inform_msg, sizeof(inform_msg)) < 0) {
+        perror("write(direct_msg)");
+        return;
+    }
+
+    stream_video(peer_ssl, filename);
+
+    ssl_free(peer_ssl, peer_fd);
+    std::cout << "Streaming session ended.\n";
+}
+
 void Client::relay_send_file(int to_id, const std::string& filename){
     /* 通知對端要傳檔案了 */
     Message inform_msg;
@@ -384,6 +427,16 @@ void Client::relay_send_file(int to_id, const std::string& filename){
     }
 
     send_file(server_ssl, filename);
+}
+
+void Client::receive_streaming() {
+    // Display video frames
+    display(streaming_queue, running);
+    std::cout << "Streaming session ended.\n";
+}
+
+StreamingQueue& Client::get_streaming_queue() {
+    return streaming_queue;
 }
 
 void send_file(SSL* ssl, const std::string& filename){
