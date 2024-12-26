@@ -74,6 +74,9 @@ void* server_listener_thread_func(void* arg) {
             case RELAY_STREAMING:
                 enqueue_frame(client->get_streaming_queue(), client->get_server_ssl());
                 break;
+            case RELAY_AUDIO_STREAMING:
+                play_audio(client->get_server_ssl());
+                break;
             default:
                 std::cout << "Unknown message type: " << msg.msg_type << "\n";
         }
@@ -121,8 +124,10 @@ void* direct_listener_thread_func(void* arg) {
             recv_file(peer_ssl);   
         } else if(msg.msg_type == DIRECT_STREAMING) {
             enqueue_frame(client->get_streaming_queue(), peer_ssl);
+        } else if(msg.msg_type == DIRECT_AUDIO_STREAMING) {
+            play_audio(peer_ssl);
         }
-        std::cout << "The line before direct_listener_thread_func's ssl_free\n";
+
         ssl_free(peer_ssl, peer_fd);
     }
 

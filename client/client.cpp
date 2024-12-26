@@ -272,6 +272,30 @@ void Client::command_loop() {
             // Format: receive_streaming
             std::cout << "Entering receiving streaming mode...\n";
             receive_streaming();
+        } else if (cmd == "direct_audio_streaming") {
+            // Format: direct_audio_streaming <ip> <port> <audio filename>
+            size_t first_space = line.find(' ');
+            size_t second_space = line.find(' ', first_space + 1);
+            size_t third_space = line.find(' ', second_space + 1);
+            if (first_space == std::string::npos || second_space == std::string::npos || third_space == std::string::npos) {
+                std::cout << "Usage: direct_audio_streaming <ip> <port> <audio_filename>\n";
+                continue;
+            }
+            std::string peer_ip = line.substr(first_space + 1, second_space - first_space - 1);
+            int peer_port = std::stoi(line.substr(second_space + 1, third_space - second_space - 1));
+            std::string filename = line.substr(third_space + 1);
+            direct_audio_streaming(peer_ip, peer_port, filename);
+        } else if (cmd == "relay_audio_streaming") {
+            // Format: relay_audio_streaming <to_id> <audio filename>
+            size_t first_space = line.find(' ');
+            size_t second_space = line.find(' ', first_space + 1);
+            if (first_space == std::string::npos || second_space == std::string::npos) {
+                std::cout << "Usage: relay_audio_streaming <to_id> <audio filename>\n";
+                continue;
+            }
+            int to_id = std::stoi(line.substr(first_space + 1, second_space - first_space - 1));
+            std::string filename = line.substr(second_space + 1);
+            relay_audio_streaming(to_id, filename);
         } else {
             std::cout << "Unknown command: " << cmd << "\n";
         }
@@ -460,6 +484,43 @@ void Client::receive_streaming() {
 
 StreamingQueue& Client::get_streaming_queue() {
     return streaming_queue;
+}
+
+void Client::direct_audio_streaming(const std::string& peer_ip, int peer_port, const std::string& filename) {
+    int peer_fd;
+    SSL* peer_ssl = ssl_connect(peer_ip, peer_port, peer_fd);
+
+    if (!peer_ssl) {
+        std::cerr << "Error: Failed to establish SSL connection.\n";
+        return;
+    }
+    /* 通知對端要開始 streaming 了 */
+    Message inform_msg;
+    memset(&inform_msg, 0, sizeof(inform_msg));
+    inform_msg.msg_type = DIRECT_AUDIO_STREAMING;
+    if (SSL_write(peer_ssl, &inform_msg, sizeof(inform_msg)) < 0) {
+        perror("write(direct_msg)");
+        return;
+    }
+
+    stream_audio(peer_ssl, filename);
+
+    ssl_free(peer_ssl, peer_fd);
+    std::cout << "Streaming session ended.\n";
+}
+
+void Client::relay_audio_streaming(int to_id, const std::string& filename) {
+    Message inform_msg;
+    memset(&inform_msg, 0, sizeof(inform_msg));
+    inform_msg.msg_type = RELAY_AUDIO_STREAMING;
+    inform_msg.to_id = to_id;
+
+    if (SSL_write(server_ssl, &inform_msg, sizeof(inform_msg)) < 0) {
+        perror("write(chat)");
+    }
+
+    stream_audio(server_ssl, filename);
+    std::cout << "Streaming session ended.\n";
 }
 
 void send_file(SSL* ssl, const std::string& filename){

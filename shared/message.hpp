@@ -35,6 +35,8 @@ enum MsgType {
 
     DIRECT_STREAMING = 16,
     RELAY_STREAMING = 17,
+    DIRECT_AUDIO_STREAMING = 18,
+    RELAY_AUDIO_STREAMING = 19,
     // Add more types: FILE_INIT, FILE_CHUNK, VIDEO_FRAME, etc.
 };
 
