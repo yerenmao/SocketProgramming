@@ -121,6 +121,8 @@ void* direct_listener_thread_func(void* arg) {
             recv_file(peer_ssl);   
         } else if(msg.msg_type == DIRECT_STREAMING) {
             enqueue_frame(client->get_streaming_queue(), peer_ssl);
+        } else if(msg.msg_type == DIRECT_AUDIO_STREAMING) {
+            play_audio(peer_ssl);
         }
         std::cout << "The line before direct_listener_thread_func's ssl_free\n";
         ssl_free(peer_ssl, peer_fd);

@@ -16,4 +16,8 @@ void display(StreamingQueue& queue, bool& running);
 // Enqueue frames from SSL connection into the streaming queue
 void enqueue_frame(StreamingQueue& queue, SSL* ssl);
 
+// Function declarations for audio streaming
+void stream_audio(SSL* ssl, const std::string& audio_file_path); // For file-based audio streaming
+void play_audio(SSL* ssl);
+
 #endif // STREAMING_HPP
