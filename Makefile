@@ -4,8 +4,6 @@ CXX = g++
 CXXFLAGS = -Wall -Wextra -pthread -std=c++17 \
 -I/opt/homebrew/opt/openssl@3/include -L/opt/homebrew/opt/openssl@3/lib -lssl -lcrypto \
 -I/opt/homebrew/opt/opencv@4/include/opencv4 -L/opt/homebrew/opt/opencv@4/lib -lopencv_videoio -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc \
--I/opt/homebrew/opt/portaudio/include -L/opt/homebrew/opt/portaudio/lib -lportaudio \
--I/opt/homebrew/opt/ffmpeg@7/include -L/opt/homebrew/opt/ffmpeg@7/lib -lavformat -lavcodec -lavutil -lswresample
 
 # Directories
 CLIENT_DIR = client
