@@ -44,6 +44,8 @@ struct Message {
     int to_id;         // Receiver ID
     int payload_size;
     char payload[MAX_PAYLOAD_SIZE];
+
+    std::string from_username;
 };
 
 #endif

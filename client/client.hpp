@@ -44,7 +44,7 @@ private:
     void logout();
     void register_user(const std::string& username, const std::string& password);
     void chat(int to_id, const std::string& message);
-    void request_peer(int to_id);
+    void request_peer();
     void direct_send(const std::string& peer_ip, int peer_port, const std::string& message);
 
     /* Transfer file feature */
@@ -56,11 +56,13 @@ private:
     void direct_streaming(const std::string& peer_ip, int peer_port, const std::string& filename);
     void relay_streaming(int to_id, const std::string& filename);
     void receive_streaming();
+    void welcome_message(bool& first);
 
     SSL* ssl_connect(const std::string& ip, int port, int& fd);
     
 
     static bool running;
+    bool first;
 };
 
 void send_file(SSL* ssl, const std::string& filename);

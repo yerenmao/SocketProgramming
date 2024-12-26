@@ -122,15 +122,26 @@ bool Client::start_threads() {
 
 /* 處理 Client 的 User Input */
 void Client::command_loop() {
+    first = true;
     while (running) {
+        sleep(1);
+        welcome_message(first);
+
         std::string line;
         if (!std::getline(std::cin, line)) {
             break;
         }
 
         if (line == "quit") {
+            if(logged_in) logout();
             running = false;
             break;
+        }
+
+        if (line == "help") {
+            first = true;
+            welcome_message(first);
+            continue;
         }
 
         // Parse the command
@@ -189,16 +200,6 @@ void Client::command_loop() {
             int to_id = std::stoi(line.substr(first_space + 1, second_space - first_space - 1));
             std::string message = line.substr(second_space + 1);
             chat(to_id, message);
-        } else if (cmd == "request_peer") {
-            // Format: request_peer <to_id>
-            size_t first_space = line.find(' ');
-            if (first_space == std::string::npos) {
-                std::cout << "Usage: request_peer <to_id>\n";
-                continue;
-            }
-
-            int to_id = std::stoi(line.substr(first_space + 1));
-            request_peer(to_id);
         } else if (cmd == "direct_send") {
             // direct_send <ip> <port> <message>
             // Connect directly to another client and send a message
@@ -307,6 +308,7 @@ void Client::login(const std::string& username, const std::string& password) {
 void Client::successful_login(const std::string& username) {
     this->logged_in = true;
     this->username = username;
+    this->first = true;
     std::cout << "Success\n";
 }
 
@@ -347,6 +349,7 @@ void Client::chat(int to_id, const std::string& message) {
     Message chat_msg{};
     chat_msg.msg_type = CHAT;
     chat_msg.to_id = to_id;
+    chat_msg.from_username = username;
     std::strncpy(chat_msg.payload, message.c_str(), MAX_PAYLOAD_SIZE);
     chat_msg.payload_size = message.size();
 
@@ -355,10 +358,9 @@ void Client::chat(int to_id, const std::string& message) {
     }
 }
 
-void Client::request_peer(int to_id) {
+void Client::request_peer() {
     Message req_msg{};
     req_msg.msg_type = REQUEST_PEER;
-    req_msg.to_id = to_id;
 
     if (SSL_write(server_ssl, &req_msg, sizeof(req_msg)) < 0) {
         perror("write(request_peer)");
@@ -372,6 +374,7 @@ void Client::direct_send(const std::string& peer_ip, int peer_port, const std::s
     // Send a message in the same Message format
     Message direct_msg;
     memset(&direct_msg, 0, sizeof(direct_msg));
+    direct_msg.from_username = username;
     direct_msg.msg_type = DIRECT_MSG;
     strncpy(direct_msg.payload, message.c_str(), MAX_PAYLOAD_SIZE);
     direct_msg.payload_size = (int)strlen(direct_msg.payload);
@@ -391,6 +394,7 @@ void Client::direct_send_file(const std::string& peer_ip, int peer_port, const s
     Message inform_msg;
     memset(&inform_msg, 0, sizeof(inform_msg));
     inform_msg.msg_type = DIRECT_SEND_FILE;
+    inform_msg.from_username = username;
     if (SSL_write(peer_ssl, &inform_msg, sizeof(inform_msg)) < 0) {
         perror("write(direct_msg)");
         return;
@@ -430,6 +434,7 @@ void Client::relay_send_file(int to_id, const std::string& filename){
     memset(&inform_msg, 0, sizeof(inform_msg));
     inform_msg.msg_type = RELAY_SEND_FILE;
     inform_msg.to_id = to_id;
+    inform_msg.from_username = username;
 
     if (SSL_write(server_ssl, &inform_msg, sizeof(inform_msg)) < 0) {
         perror("write(chat)");
@@ -623,4 +628,48 @@ void ssl_free(SSL* ssl, int fd){
     }
 
     close(fd);
+}
+
+void Client::welcome_message(bool& first){
+    if(!first) return;
+
+    if(!logged_in){
+        std::cout << "\n"
+                    "====================================================\n"
+                    "        Welcome to CSIE chatroom        \n"
+                    "Register an account\n"
+                    "   --> Enter: register <username> <password>\n"
+                    "Ready to login\n"
+                    "   --> Enter: login <username> <password>\n"
+                    "quit\n"
+                    "   --> Enter: quit\n"
+                    "====================================================\n";
+    } else {
+        std::cout << "\n"
+                    "====================================================\n"
+                    "                  Hi " + username + "!!!\n"
+                    "Welcome to CSIE Chatroom \n"
+                    "You can now chat with your friends with the\n"
+                    "following command.\n"
+                    " \n"
+                    "---------------------Relay mode:--------------------\n"
+                    "Chat             --> chat <id> <message> \n"
+                    "Send file        --> relay_send_file <id> <filename> \n"
+                    "Video streaming  --> relay_video_streaming <id> <video filename> \n"
+                    "Audio streaming  --> relay_audio_streaming <id> <audio filename> \n"
+                    "Webcam streaming --> relay_webcam_streaming <id> \n"
+                    " \n"
+                    "--------------------Direct mode:--------------------\n"
+                    "Chat             --> direct_send <ip> <port> <message> \n"
+                    "Send file        --> direct_send_file <ip> <port> <filename> \n"
+                    "Video streaming  --> direct_video_streaming <ip> <port> <video filename> \n"
+                    "Audio streaming  --> direct_audio_streaming <ip> <port> <audio filename> \n"
+                    "Webcam streaming --> direct_webcam_streaming <id> <port>\n"
+                    "\n"
+                    "--------------------Get Information:-----------------\n"
+                    "Type \"help\" to get information\n"
+                    "====================================================\n";
+        if(logged_in) request_peer();
+    }
+    first = false;
 }

@@ -13,6 +13,7 @@ struct ClientInfo {
     int listen_port;
     bool online;
     SSL *ssl;
+    std::string username;
 };
 
 void handle_client(SSL *client_ssl, int client_socket);
