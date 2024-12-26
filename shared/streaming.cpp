@@ -1,7 +1,6 @@
 #include "streaming.hpp"
 #include <openssl/ssl.h>
 #include <opencv2/opencv.hpp>
-#include <portaudio.h>
 #include <fstream>
 #include <iostream>
 #include <vector>
