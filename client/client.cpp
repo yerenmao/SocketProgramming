@@ -296,6 +296,26 @@ void Client::command_loop() {
             int to_id = std::stoi(line.substr(first_space + 1, second_space - first_space - 1));
             std::string filename = line.substr(second_space + 1);
             relay_audio_streaming(to_id, filename);
+        } else if (cmd == "direct_webcam_streaming") {
+            // Format: direct_streaming <ip> <port> <video/audio filename>
+            size_t first_space = line.find(' ');
+            size_t second_space = line.find(' ', first_space + 1);
+            if (first_space == std::string::npos || second_space == std::string::npos) {
+                std::cout << "Usage: direct_webcam_streaming <ip> <port>\n";
+                continue;
+            }
+            std::string peer_ip = line.substr(first_space + 1, second_space - first_space - 1);
+            int peer_port = std::stoi(line.substr(second_space + 1));
+            direct_streaming(peer_ip, peer_port, "webcam");
+        } else if (cmd == "relay_webcam_streaming") {
+            // Format: relay_webcam_streaming <to_id>
+            size_t first_space = line.find(' ');
+            if (first_space == std::string::npos) {
+                std::cout << "Usage: relay_webcam_streaming <to_id>\n";
+                continue;
+            }
+            int to_id = std::stoi(line.substr(first_space + 1));
+            relay_streaming(to_id, "webcam");
         } else {
             std::cout << "Unknown command: " << cmd << "\n";
         }
@@ -442,7 +462,11 @@ void Client::direct_streaming(const std::string& peer_ip, int peer_port, const s
         return;
     }
 
-    stream_video(peer_ssl, filename);
+    if (filename == "webcam") {
+        stream_webcam(peer_ssl);
+    } else {
+        stream_video(peer_ssl, filename);
+    }
 
     ssl_free(peer_ssl, peer_fd);
     std::cout << "Streaming session ended.\n";
@@ -472,7 +496,12 @@ void Client::relay_streaming(int to_id, const std::string& filename) {
         return;
     }
 
-    stream_video(server_ssl, filename);
+    if (filename == "webcam") {
+        stream_webcam(server_ssl);
+    } else {
+        stream_video(server_ssl, filename);
+    }
+
     std::cout << "Streaming session ended.\n";
 }
 

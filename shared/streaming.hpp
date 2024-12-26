@@ -9,6 +9,7 @@
 // Function declarations for streaming
 void send_frame(SSL* ssl, const std::vector<char>& frame);
 void stream_video(SSL* ssl, const std::string& video_path);
+void stream_webcam(SSL* ssl);
 std::vector<char> receive_frame(SSL* ssl);
 
 // Display frames from the streaming queue
