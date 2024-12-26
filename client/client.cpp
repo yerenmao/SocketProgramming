@@ -66,7 +66,8 @@ bool Client::connect_to_server() {
     if (SSL_connect(server_ssl) <= 0) {
         ERR_print_errors_fp(stderr);
     } else {
-        std::cout << "SSL handshake success (Client)!\n";
+        // std::cout << "SSL handshake success (Client)!\n";
+        ;
     }
 
     std::cout << "Connected to server at " << server_ip << ":" << server_port << "\n";
@@ -245,25 +246,25 @@ void Client::command_loop() {
             int to_id = std::stoi(line.substr(first_space + 1, second_space - first_space - 1));
             std::string filename = line.substr(second_space + 1);
             relay_send_file(to_id, filename);
-        } else if (cmd == "direct_streaming") {
+        } else if (cmd == "direct_video_streaming") {
             // Format: direct_streaming <ip> <port> <video/audio filename>
             size_t first_space = line.find(' ');
             size_t second_space = line.find(' ', first_space + 1);
             size_t third_space = line.find(' ', second_space + 1);
             if (first_space == std::string::npos || second_space == std::string::npos || third_space == std::string::npos) {
-                std::cout << "Usage: direct_streaming <ip> <port> <video/audio filename>\n";
+                std::cout << "Usage: direct_video_streaming <ip> <port> <video_filename>\n";
                 continue;
             }
             std::string peer_ip = line.substr(first_space + 1, second_space - first_space - 1);
             int peer_port = std::stoi(line.substr(second_space + 1, third_space - second_space - 1));
             std::string filename = line.substr(third_space + 1);
             direct_streaming(peer_ip, peer_port, filename);
-        } else if (cmd == "relay_streaming") {
+        } else if (cmd == "relay_video_streaming") {
             // Format: relay_streaming <to_id> <filename>
             size_t first_space = line.find(' ');
             size_t second_space = line.find(' ', first_space + 1);
             if (first_space == std::string::npos || second_space == std::string::npos) {
-                std::cout << "Usage: relay_streaming <to_id> <filename>\n";
+                std::cout << "Usage: relay_video_streaming <to_id> <video_filename>\n";
                 continue;
             }
             int to_id = std::stoi(line.substr(first_space + 1, second_space - first_space - 1));
@@ -689,7 +690,8 @@ SSL* Client::ssl_connect(const std::string& ip, int port, int& peer_fd){
     if (SSL_connect(peer_ssl) <= 0) {
         ERR_print_errors_fp(stderr);
     } else {
-        std::cout << "SSL handshake success (P2P Client)!\n";
+        // std::cout << "SSL handshake success (P2P Client)!\n";
+        ;
     }
 
     return peer_ssl;
@@ -706,7 +708,8 @@ void ssl_free(SSL* ssl, int fd){
         std::cerr << "SSL_shutdown failed, error code: " << err_code << std::endl;
         ERR_print_errors_fp(stderr); // 打印詳細錯誤資訊
     } else if (shutdown_result == 0) {
-        std::cout << "SSL_shutdown incomplete, waiting for peer's close_notify." << std::endl;
+        // std::cout << "SSL_shutdown incomplete, waiting for peer's close_notify." << std::endl;
+        ;
     }
 
     SSL_free(ssl);
@@ -737,7 +740,7 @@ void Client::welcome_message(bool& first){
     } else {
         std::cout << "\n"
                     "====================================================\n"
-                    "                  Hi " + username + "!!!\n"
+                    "                  🎉🎉Hi " + username + "!!!🎉🎉\n"
                     "Welcome to CSIE Chatroom \n"
                     "You can now chat with your friends with the\n"
                     "following command.\n"
@@ -745,19 +748,20 @@ void Client::welcome_message(bool& first){
                     "---------------------Relay mode:--------------------\n"
                     "Chat             --> chat <id> <message> \n"
                     "Send file        --> relay_send_file <id> <filename> \n"
-                    "Video streaming  --> relay_video_streaming <id> <video filename> \n"
-                    "Audio streaming  --> relay_audio_streaming <id> <audio filename> \n"
+                    "Video streaming  --> relay_video_streaming <id> <video_filename> \n"
+                    "Audio streaming  ❌❌ relay_audio_streaming <id> <audio_filename> \n"
                     "Webcam streaming --> relay_webcam_streaming <id> \n"
                     " \n"
                     "--------------------Direct mode:--------------------\n"
                     "Chat             --> direct_send <ip> <port> <message> \n"
                     "Send file        --> direct_send_file <ip> <port> <filename> \n"
-                    "Video streaming  --> direct_video_streaming <ip> <port> <video filename> \n"
-                    "Audio streaming  --> direct_audio_streaming <ip> <port> <audio filename> \n"
-                    "Webcam streaming --> direct_webcam_streaming <id> <port>\n"
+                    "Video streaming  --> direct_video_streaming <ip> <port> <video_filename> \n"
+                    "Audio streaming  --> direct_audio_streaming <ip> <port> <audio_filename> \n"
+                    "Webcam streaming --> direct_webcam_streaming <ip> <port>\n"
                     "\n"
                     "--------------------Get Information:-----------------\n"
                     "Type \"help\" to get information\n"
+                    "Type \"receive_streaming\" to receive video or webCam streaming!!\n"
                     "====================================================\n";
         if(logged_in) request_peer();
     }

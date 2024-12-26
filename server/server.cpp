@@ -81,7 +81,8 @@ void Server::accept_clients() {
         if (SSL_accept(client_ssl_fd) <= 0) {
             ERR_print_errors_fp(stderr);
         } else {
-            std::cout << "SSL handshake success (Server)!\n";
+            // std::cout << "SSL handshake success (Server)!\n";
+            ;
         }
 
         // 在 accept 時利用 add_task 傳入 lambda function

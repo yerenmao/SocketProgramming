@@ -70,7 +70,7 @@ void* server_listener_thread_func(void* arg) {
                 std::cout << "====================================================\n";
                 break;
             case RELAY_SEND_FILE:
-                std::cout << msg.from_username << " send a file to you";
+                std::cout << msg.from_username << " send a file to you\n";
                 recv_file(client->get_server_ssl());
                 break;
             case RELAY_STREAMING:
@@ -107,7 +107,8 @@ void* direct_listener_thread_func(void* arg) {
         if (SSL_accept(peer_ssl) <= 0) {
             ERR_print_errors_fp(stderr);
         } else {
-            std::cout << "SSL handshake success (P2P Server)!\n";
+            // std::cout << "SSL handshake success (P2P Server)!\n";
+            ;
         }
 
         Message msg;
@@ -123,7 +124,7 @@ void* direct_listener_thread_func(void* arg) {
         if (msg.msg_type == DIRECT_MSG) {
             std::cout << "Received from " << msg.from_username << ": " << msg.payload << "\n";
         } else if(msg.msg_type == DIRECT_SEND_FILE) {
-            std::cout << msg.from_username << " send a file to you";
+            std::cout << msg.from_username << " send a file to you\n";
             recv_file(peer_ssl);   
         } else if(msg.msg_type == DIRECT_STREAMING) {
             enqueue_frame(client->get_streaming_queue(), peer_ssl);

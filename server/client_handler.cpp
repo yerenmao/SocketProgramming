@@ -98,7 +98,7 @@ void handle_message(SSL *client_ssl, int client_socket, const Message& msg, int 
             payload_stream >> username >> password;
 
             AuthResult result = Authentication::register_user(username, password);
-            std::cout << "[register] " << username << " " << password  << " " << auth_result_to_string(result) << std::endl;
+            std::cout << "[REGISTER] " << username << " " << password  << " " << auth_result_to_string(result) << std::endl;
             
             // Send response back to client
             Message response{};
@@ -115,7 +115,7 @@ void handle_message(SSL *client_ssl, int client_socket, const Message& msg, int 
             payload_stream >> username >> password;
 
             AuthResult result = Authentication::login_user(username, password);
-            std::cout << "[login] " << username << " " << password  << " " << auth_result_to_string(result) << std::endl;
+            std::cout << "[LOGIN] " << username << " " << password  << " " << auth_result_to_string(result) << std::endl;
 
             // Send response back to client
             Message response{};
@@ -163,7 +163,6 @@ void handle_message(SSL *client_ssl, int client_socket, const Message& msg, int 
 
         case REQUEST_PEER: {
             // Client wants peer info to establish a direct connection
-            std::cout << "[Receive peer info request]\n";
             std::stringstream user_info;
             Message resp;
             memset(&resp, 0, sizeof(resp));
@@ -246,7 +245,6 @@ void handle_message(SSL *client_ssl, int client_socket, const Message& msg, int 
 bool get_client_info(std::stringstream& user_info) {
     user_info << "Online user:\n";
     pthread_mutex_lock(&clients_mutex);
-    std::cout << "clients size: " << clients.size();
     if(!clients.empty()){
         for(const auto& [id, info] : clients){
             if(info.online && info.username != "") user_info << info.username << " ID: "  << info.client_id << " location: " << info.ip << ":" << info.listen_port << "\n"; 
