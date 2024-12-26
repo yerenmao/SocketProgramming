@@ -57,6 +57,7 @@ private:
     void relay_streaming(int to_id, const std::string& filename);
     void receive_streaming();
     void direct_audio_streaming(const std::string& peer_ip, int peer_port, const std::string& filename);
+    void relay_audio_streaming(int to_id, const std::string& filename);
 
     SSL* ssl_connect(const std::string& ip, int port, int& fd);
     

@@ -201,6 +201,11 @@ void stream_audio(SSL* ssl, const std::string& audio_path) {
 
     send_frame(ssl, {}); // Send an empty frame as EOF
     ma_decoder_uninit(&decoder);
+
+    int flush_status = SSL_write(ssl, nullptr, 0);
+    if (flush_status <= 0) {
+        std::cerr << "Error: Failed to flush SSL write buffer.\n";
+    }
     std::cout << "Audio streaming finished." << std::endl;
 }
 
@@ -210,22 +215,30 @@ void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
     std::vector<char> audio_data = receive_frame(ssl);
 
     if (audio_data.empty()) {
-        // No more data; fill the output buffer with silence
+        // EOF received
+        std::cout << "Received EOF in audio stream. Stopping playback." << std::endl;
+        stop_audio(); // Signal to stop playback
         std::memset(pOutput, 0, frameCount * ma_get_bytes_per_frame(pDevice->playback.format, pDevice->playback.channels));
-    } else {
-        // Determine how many frames we can actually copy
-        size_t frames_to_copy = std::min(static_cast<size_t>(frameCount), audio_data.size() / ma_get_bytes_per_frame(pDevice->playback.format, pDevice->playback.channels));
-        std::memcpy(pOutput, audio_data.data(), frames_to_copy * ma_get_bytes_per_frame(pDevice->playback.format, pDevice->playback.channels));
+        return;
+    }
 
-        // If there's any remaining space in the output buffer, fill it with silence
-        if (frames_to_copy < frameCount) {
-            size_t offset = frames_to_copy * ma_get_bytes_per_frame(pDevice->playback.format, pDevice->playback.channels);
-            std::memset(static_cast<uint8_t*>(pOutput) + offset, 0, (frameCount - frames_to_copy) * ma_get_bytes_per_frame(pDevice->playback.format, pDevice->playback.channels));
-        }
+    // Determine how many frames we can actually copy
+    size_t frames_to_copy = std::min(static_cast<size_t>(frameCount), audio_data.size() / ma_get_bytes_per_frame(pDevice->playback.format, pDevice->playback.channels));
+    std::memcpy(pOutput, audio_data.data(), frames_to_copy * ma_get_bytes_per_frame(pDevice->playback.format, pDevice->playback.channels));
+
+    // Fill remaining buffer space with silence if necessary
+    if (frames_to_copy < frameCount) {
+        size_t offset = frames_to_copy * ma_get_bytes_per_frame(pDevice->playback.format, pDevice->playback.channels);
+        std::memset(static_cast<uint8_t*>(pOutput) + offset, 0, (frameCount - frames_to_copy) * ma_get_bytes_per_frame(pDevice->playback.format, pDevice->playback.channels));
     }
 
     (void)pInput; // Unused
 }
+
+// Shared resources for playback control
+std::condition_variable cond_var;
+std::mutex cond_var_mutex;
+std::atomic<bool> stop_flag(false);
 
 void play_audio(SSL* ssl) {
     // Receive metadata
@@ -254,12 +267,20 @@ void play_audio(SSL* ssl) {
         return;
     }
 
-    // Wait for playback to finish; this could be replaced with a more appropriate condition
-    std::cout << "Press Enter to stop playback..." << std::endl;
-    std::cin.get();
+    // Wait for the stop condition
+    std::cout << "Audio is playing." << std::endl;
+    std::unique_lock<std::mutex> lock(cond_var_mutex);
+    cond_var.wait(lock, [] { return stop_flag.load(); });
 
     ma_device_stop(&device);
     ma_device_uninit(&device);
     std::cout << "Audio playback finished." << std::endl;
 }
 
+void stop_audio() {
+    {
+        std::lock_guard<std::mutex> lock(cond_var_mutex);
+        stop_flag.store(true);
+    }
+    cond_var.notify_one();
+}

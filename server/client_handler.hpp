@@ -17,5 +17,6 @@ struct ClientInfo {
 
 void handle_client(SSL *client_ssl, int client_socket);
 void streaming(SSL *client_ssl, SSL *recipient_ssl);
+void audio_streaming(SSL *client_ssl, SSL *recipient_ssl);
 
 #endif // CLIENT_HANDLER_HPP
