@@ -99,6 +99,77 @@ void stream_video(SSL* ssl, const std::string& video_path) {
     std::cout << "Video streaming finished. Initiating SSL shutdown...\n";
 }
 
+void stream_webcam(SSL* ssl) {
+    cv::VideoCapture cap(0); // Open the default webcam (device index 0)
+    if (!cap.isOpened()) {
+        std::cerr << "Error: Unable to access the webcam.\n";
+        return;
+    }
+
+    cv::Mat frame;
+    while (true) {
+        cap >> frame; // Capture a frame
+        if (frame.empty()) {
+            std::cerr << "Error: Failed to capture frame from webcam.\n";
+            break;
+        }
+
+        // crop the center 640x480 region of a 1280x720 frame
+        int crop_x = (frame.cols - 640) / 2;
+        int crop_y = (frame.rows - 480) / 2;
+        int crop_width = 640;
+        int crop_height = 480;
+
+        // Ensure the cropping rectangle is within the frame bounds
+        crop_width = std::min(crop_width, frame.cols - crop_x);
+        crop_height = std::min(crop_height, frame.rows - crop_y);
+
+        if (crop_width > 0 && crop_height > 0) {
+            cv::Rect crop_rect(crop_x, crop_y, crop_width, crop_height);
+            cv::Mat cropped_frame = frame(crop_rect); // Crop the frame
+
+            // Compress the cropped frame to JPEG
+            std::vector<uchar> buffer;
+            if (!cv::imencode(".jpg", cropped_frame, buffer)) {
+                std::cerr << "Error: Failed to encode frame.\n";
+                continue;
+            }
+
+            send_frame(ssl, std::vector<char>(buffer.begin(), buffer.end()));
+
+            // Display the cropped frame
+            cv::imshow("Webcam Streaming", cropped_frame);
+        } else {
+            std::cerr << "Error: Invalid cropping dimensions.\n";
+        }
+
+        // Add delay to control the frame rate (e.g., 30 FPS)
+        if (cv::waitKey(30) >= 0) { // Exit when any key is pressed
+            std::cout << "User interrupted webcam streaming. Exiting...\n";
+            break;
+        }
+    }
+
+    // Send an empty frame as EOF
+    send_frame(ssl, std::vector<char>());
+
+    // Ensure all data is sent
+    int flush_status = SSL_write(ssl, nullptr, 0);
+    if (flush_status <= 0) {
+        std::cerr << "Error: Failed to flush SSL write buffer.\n";
+    }
+
+    std::cout << "Webcam streaming finished. Initiating SSL shutdown...\n";
+    cap.release(); // Release the webcam
+
+    // Explicitly destroy the window
+    cv::destroyWindow("Webcam Streaming");
+    for (int i = 0; i < 5; i++) {
+        cv::waitKey(1);
+    }
+}
+
+
 void display(StreamingQueue& queue, bool& running) {
     bool streaming_complete = false;
 
@@ -129,6 +200,19 @@ void display(StreamingQueue& queue, bool& running) {
             break;
         } else {
             usleep(10000); // Add a slight delay to reduce CPU usage
+        }
+    }
+
+    // Flush remaining frames in the queue
+    std::cout << "Flushing remaining frames...\n";
+    while (!queue.empty()) {
+        auto frame_data = queue.pop();
+        if (!frame_data.empty()) {
+            cv::Mat frame = cv::imdecode(cv::Mat(frame_data), cv::IMREAD_COLOR);
+            if (!frame.empty()) {
+                cv::imshow("Video Stream", frame);
+                cv::waitKey(1); // Show frame briefly
+            }
         }
     }
 
