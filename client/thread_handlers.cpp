@@ -63,12 +63,14 @@ void* server_listener_thread_func(void* arg) {
                 client->successful_login(msg.payload);
                 break;
             case CHAT:
-                std::cout << "Received chat: " << msg.payload << "\n";
+                std::cout << "Received from " << msg.from_username << ": " << msg.payload << "\n";
                 break;
             case PEER_INFO:
-                std::cout << "Peer info: " << msg.payload << "\n";
+                std::cout << msg.payload;
+                std::cout << "====================================================\n";
                 break;
             case RELAY_SEND_FILE:
+                std::cout << msg.from_username << " send a file to you";
                 recv_file(client->get_server_ssl());
                 break;
             case RELAY_STREAMING:
@@ -119,8 +121,9 @@ void* direct_listener_thread_func(void* arg) {
         }
 
         if (msg.msg_type == DIRECT_MSG) {
-            std::cout << "Direct message received: " << msg.payload << "\n";
+            std::cout << "Received from " << msg.from_username << ": " << msg.payload << "\n";
         } else if(msg.msg_type == DIRECT_SEND_FILE) {
+            std::cout << msg.from_username << " send a file to you";
             recv_file(peer_ssl);   
         } else if(msg.msg_type == DIRECT_STREAMING) {
             enqueue_frame(client->get_streaming_queue(), peer_ssl);

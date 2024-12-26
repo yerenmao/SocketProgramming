@@ -17,9 +17,9 @@ static std::map<int, ClientInfo> clients;                           // 用於把
 static pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;   // client 的 mutex lock
 static int next_client_id = 1;
 
-void handle_message(SSL *client_ssl, int client_socket, const Message& msg);
+void handle_message(SSL *client_ssl, int client_socket, const Message& msg, int client_id);
 void send_message(SSL *client_ssl, int socket_fd, const Message& msg);
-bool get_client_info(int client_id, std::string& ip, int& port);
+bool get_client_info(std::stringstream& user_info);
 void handle_authentication(const Message& response);
 void transfer_file(SSL *src_client_ssl, SSL *dst_client_ssl, int socket_fd);
 
@@ -33,6 +33,8 @@ void handle_client(SSL *client_ssl, int client_socket) {
         return;
     }
 
+    int assigned_id = -1;
+
     /* 預期使用者的第一個 Message 是 JOIN
     否則直接把 connection close 掉
     */
@@ -43,7 +45,7 @@ void handle_client(SSL *client_ssl, int client_socket) {
         getpeername(client_socket, (struct sockaddr*)&addr, &len);
         std::string client_ip = inet_ntoa(addr.sin_addr);
 
-        int assigned_id = -1;
+        assigned_id = -1;
         pthread_mutex_lock(&clients_mutex);
         assigned_id = next_client_id++;
         clients[assigned_id] = {assigned_id, client_socket, client_ip, listen_port, true, client_ssl};
@@ -76,7 +78,7 @@ void handle_client(SSL *client_ssl, int client_socket) {
             return;
         }
 
-        handle_message(client_ssl, client_socket, msg);
+        handle_message(client_ssl, client_socket, msg, assigned_id);
     }
 }
 
@@ -87,7 +89,7 @@ void register_client(int client_socket, const std::string& ip, int listen_port, 
     pthread_mutex_unlock(&clients_mutex);
 }
 
-void handle_message(SSL *client_ssl, int client_socket, const Message& msg) {
+void handle_message(SSL *client_ssl, int client_socket, const Message& msg, int client_id) {
     switch (msg.msg_type) {
         case REGISTER: {
             // Extract username and password from payload
@@ -120,6 +122,10 @@ void handle_message(SSL *client_ssl, int client_socket, const Message& msg) {
             if (result == AuthResult::Success) {
                 response.msg_type = LOGIN;
                 response.payload_size = snprintf(response.payload, MAX_PAYLOAD_SIZE, "%s", username.c_str());
+                pthread_mutex_lock(&clients_mutex);
+                clients[client_id].username = username;
+                clients[client_id].online = true;
+                pthread_mutex_unlock(&clients_mutex);
             } else {    
                 response.msg_type = RESPONSE;
                 response.payload_size = snprintf(response.payload, MAX_PAYLOAD_SIZE, "%s", auth_result_to_string(result).c_str());
@@ -133,6 +139,10 @@ void handle_message(SSL *client_ssl, int client_socket, const Message& msg) {
             // Extract username from payload
             std::string username(msg.payload, msg.payload_size);
             Authentication::logout_user(username);
+            pthread_mutex_lock(&clients_mutex);
+            clients[client_id].username = "";
+            clients[client_id].online = false;
+            pthread_mutex_unlock(&clients_mutex);
             std::cout << "[LOGOUT] " << username << " " << auth_result_to_string(AuthResult::Success) << std::endl;
             break;
         }
@@ -153,16 +163,14 @@ void handle_message(SSL *client_ssl, int client_socket, const Message& msg) {
 
         case REQUEST_PEER: {
             // Client wants peer info to establish a direct connection
-            std::string peer_ip;
-            int peer_port;
+            std::cout << "[Receive peer info request]\n";
+            std::stringstream user_info;
             Message resp;
             memset(&resp, 0, sizeof(resp));
             resp.msg_type = PEER_INFO;
-            resp.from_id = 0; // Server
-            resp.to_id = msg.from_id; // Send back to the requester
 
-            if (get_client_info(msg.to_id, peer_ip, peer_port)) {
-                snprintf(resp.payload, MAX_PAYLOAD_SIZE, "%s:%d", peer_ip.c_str(), peer_port);
+            if (get_client_info(user_info)) {
+                snprintf(resp.payload, MAX_PAYLOAD_SIZE, "%s", user_info.str().c_str());
                 resp.payload_size = strlen(resp.payload);
             } else {
                 snprintf(resp.payload, MAX_PAYLOAD_SIZE, "NOT_FOUND");
@@ -235,12 +243,14 @@ void handle_message(SSL *client_ssl, int client_socket, const Message& msg) {
     }
 }
 
-bool get_client_info(int client_id, std::string& ip, int& port) {
+bool get_client_info(std::stringstream& user_info) {
+    user_info << "Online user:\n";
     pthread_mutex_lock(&clients_mutex);
-    auto it = clients.find(client_id);
-    if (it != clients.end() && it->second.online) {
-        ip = it->second.ip;
-        port = it->second.listen_port;
+    std::cout << "clients size: " << clients.size();
+    if(!clients.empty()){
+        for(const auto& [id, info] : clients){
+            if(info.online && info.username != "") user_info << info.username << " ID: "  << info.client_id << " location: " << info.ip << ":" << info.listen_port << "\n"; 
+        }
         pthread_mutex_unlock(&clients_mutex);
         return true;
     }
