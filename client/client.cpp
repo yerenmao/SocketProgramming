@@ -745,6 +745,8 @@ void Client::welcome_message(bool& first){
                     "You can now chat with your friends with the\n"
                     "following command.\n"
                     " \n"
+                    "Logout\n"
+                    "   --> Enter: logout\n"
                     "---------------------Relay mode:--------------------\n"
                     "Chat             --> chat <id> <message> \n"
                     "Send file        --> relay_send_file <id> <filename> \n"
